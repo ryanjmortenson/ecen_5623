@@ -1,0 +1,27 @@
+# Binary files
+*.o
+*.a
+test
+
+# Generic files
+*.out
+*.log
+*.swp
+*.swo
+*.d
+*.i
+*.asm
+*.map
+*.objdump
+.project
+.cproject
+cmocka-out
+*tag*
+.ycm_extra_conf.py*
+
+# Directories
+**/logs
+**/out
+.metadata/
+.settings/
+homework/
