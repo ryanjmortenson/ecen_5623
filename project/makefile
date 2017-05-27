@@ -112,7 +112,7 @@ ifeq ($(PLATFORM),tegra)
        $(ARM_OBJS)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
-else ifneq ($(findstring arm7,$(shell uname -a)),)
+else ifneq ($(findstring armv7,$(shell uname -a)),)
 	CC=gcc
 	CFLAGS+=-lrt \
           -D TEGRA \
