@@ -19,7 +19,6 @@ status_t start_serv()
   int32_t sockfd;
   int32_t newsockfd;
   int32_t bytes_read;
-
   uint32_t clilen;
 
   struct sockaddr_in serv_addr;

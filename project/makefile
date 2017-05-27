@@ -139,11 +139,6 @@ else
 	CFLAGS+=-O3
 endif
 
-# If VERBOSE is no turn of verbose flag
-ifneq ($(VERBOSE),no)
-	CFLAGS+=-D VERBOSE
-endif
-
 # Setup some build strings
 BUILD_TARGET=@echo "Building Target $@"
 BUILD_WITH=@echo "Building with $<"
