@@ -1,3 +1,9 @@
+/** @file server.c
+*
+* @brief Holds functions for a TCP server
+*
+*/
+
 #include <stdint.h>
 #include <strings.h>
 #include <sys/socket.h>

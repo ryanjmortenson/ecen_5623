@@ -1,3 +1,9 @@
+/** @file log.h
+*
+* @brief Defines items used in logging
+*
+*/
+
 #ifndef __LOG_H__
 #define __LOG_H__
 
@@ -22,7 +28,11 @@
 #define BODY(...) printf(__VA_ARGS__); printf("\n");
 #endif
 
-// See log.h
+/*!
+* @brief Get the file basename in a OS that uses "/" for the seperator
+* @param[in] p_filename pointer to the file name
+* @return pointer to the basename
+*/
 char * get_basename(char * p_filename);
 
 #define HEADER(lvl) printf(LOG_FMT, lvl, get_basename(__FILE__), __FUNCTION__,  __LINE__);
@@ -31,22 +41,22 @@ char * get_basename(char * p_filename);
 #define LOG_HIGH(...) HEADER(HIGH); BODY(__VA_ARGS__);
 #else
 #define LOG_HIGH(...)
-#endif // LOG_LEVEL > 1
+#endif // LOG_LEVEL > 0
 
 #if LOG_LEVEL > 1
 #define LOG_MED(...)  HEADER(MEDIUM); BODY(__VA_ARGS__);
 #else
 #define LOG_MED(...)
-#endif // LOG_LEVEL > 2
+#endif // LOG_LEVEL > 1
 
 #if LOG_LEVEL > 2
 #define LOG_LOW(...)  HEADER(LOW); BODY(__VA_ARGS__);
 #else
 #define LOG_LOW(...)
-#endif  // LOG_LEVEL > 3
+#endif  // LOG_LEVEL > 2
 
 #define FUNC_ENTRY LOG_LOW("Entering %s()", __FUNCTION__);
 #define LOG_ERROR(...)  HEADER(ERROR); BODY(__VA_ARGS__);
 #define LOG_FATAL(...)  HEADER(FATAL); BODY(__VA_ARGS__);
 
-#endif // __LOG_H__
+#endif /* __LOG_H__ */
