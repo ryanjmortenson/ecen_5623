@@ -85,6 +85,16 @@ CFLAGS=-I$(APP_INC_DIR) \
        -D PROJECT$(PROJECT) \
        -std=c99
 
+ifneq ($(COLOR_LOGS),)
+	CFLAGS+=-D COLOR_LOGS
+endif
+
+ifeq ($(LOG_LEVEL),)
+	CFLAGS+=-D LOG_LEVEL=0
+else
+	CFLAGS+=-D LOG_LEVEL=$(LOG_LEVEL)
+endif
+
 # Set a map flag to be added CFLAGS for certain targets
 MAP_FLAG=-Wl,-Map,"$@.map"
 
