@@ -9,66 +9,64 @@
 
 #include <stdio.h>
 
-// TODO: Make this work on both Linux and Windows for cross compilation
-#define PATH_SEPERATOR "/"
-
-// Set up logging based on whether color logs was requested
-#ifdef COLOR_LOGS
-#define LOG_FMT   "%s%-7s %-10s in [%10s] line %4u: "
-#define HIGH      "\e[1;96m", "HIGH"
-#define MEDIUM    "\e[1;93m", "MEDIUM"
-#define LOW       "\e[0;97m", "LOW"
-#define ERROR     "\e[1;91m", "ERROR"
-#define FATAL     "\e[1;95m", "FATAL"
-#define BODY(...) printf(__VA_ARGS__); printf("\e[0m\n")
-#else
-#define LOG_FMT   "%-7s %-10s in [%10s] line %4u: "
-#define HIGH      "HIGH"
-#define MEDIUM    "MEDIUM"
-#define LOW       "LOW"
-#define ERROR     "ERROR"
-#define FATAL     "FATAL"
-#define BODY(...) printf(__VA_ARGS__); printf("\n")
-#endif
+// Logging level enumerations
+typedef enum {
+  LOG_LEVEL_HIGH,
+  LOG_LEVEL_MEDIUM,
+  LOG_LEVEL_LOW,
+  LOG_LEVEL_ERROR,
+  LOG_LEVEL_FATAL
+} log_level_t;
 
 /*!
-* @brief Get the file basename in a OS that uses "/" for the seperator
+* @brief Log at a certain level
+* @param[in] level logging level for this statement
 * @param[in] p_filename pointer to the file name
-* @param[in] p_path_seperator pointer to the path sepearator
+* @param[in] p_function pointer to the function name
+* @param[in] line_no line number in file
+* @param[in] ... variadic arguments for printf
 * @return pointer to the basename
 */
-char * get_basename(char * p_filename, char * p_path_seperator);
+void log_level
+(
+  log_level_t level,
+  char * p_filename,
+  const char * p_function,
+  uint32_t line_no,
+  ...
+);
 
-#define HEADER(lvl) printf(LOG_FMT,                                \
-                           lvl,                                    \
-                           get_basename(__FILE__, PATH_SEPERATOR), \
-                           __FUNCTION__,                           \
-                           __LINE__)
+#define LOG(level, ...) log_level(level,         \
+                                  __FILE__,      \
+                                  __FUNCTION__,  \
+                                  __LINE__,      \
+                                  __VA_ARGS__)
 
 // Different log levels which can be turned on/off by setting LOG_LEVEL
 #if LOG_LEVEL > 0
-#define LOG_HIGH(...) HEADER(HIGH); BODY(__VA_ARGS__)
+#define LOG_HIGH(...) LOG(LOG_LEVEL_HIGH, __VA_ARGS__)
 #else
 #define LOG_HIGH(...)
-#endif // LOG_LEVEL > 0
+#endif /* LOG_LEVEL > 0 */
 
 #if LOG_LEVEL > 1
-#define LOG_MED(...)  HEADER(MEDIUM); BODY(__VA_ARGS__)
+#define LOG_MED(...)  LOG(LOG_LEVEL_MEDIUM, __VA_ARGS__)
 #else
 #define LOG_MED(...)
-#endif // LOG_LEVEL > 1
+#endif  /* LOG_LEVEL > 1 */
 
 #if LOG_LEVEL > 2
-#define LOG_LOW(...)  HEADER(LOW); BODY(__VA_ARGS__)
+#define LOG_LOW(...)  LOG(LOG_LEVEL_LOW, __VA_ARGS__)
 #else
 #define LOG_LOW(...)
-#endif  // LOG_LEVEL > 2
+#endif  /* LOG_LEVEL > 2 */
 
 // Function entry log.  This should be placed at the beginning of each function
 #define FUNC_ENTRY LOG_LOW("Entering %s()", __FUNCTION__)
 
-// Error and Fatal definitions.  Fatal should be used sparingly and mostly debugging
-#define LOG_ERROR(...)  HEADER(ERROR); BODY(__VA_ARGS__)
-#define LOG_FATAL(...)  HEADER(FATAL); BODY(__VA_ARGS__)
+// Error and Fatal definitions.  Fatal should be used sparingly and
+// mostly debugging
+#define LOG_ERROR(...) LOG(LOG_LEVEL_ERROR, __VA_ARGS__)
+#define LOG_FATAL(...) LOG(LOG_LEVEL_FATAL, __VA_ARGS__)
 
 #endif /* __LOG_H__ */
