@@ -187,7 +187,7 @@ debug:
 	@echo $(TEST_OBJS)
 
 # Compiles the project into project binary which can be executed with ./project*.out
-$(PROJECT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB)
+$(PROJECT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
 $(PROJECT_OUT_FILE): $(OBJS)
 	$(BUILD_TARGET)
 	$(CC) $(CFLAGS) -o "$@" $(OBJS)

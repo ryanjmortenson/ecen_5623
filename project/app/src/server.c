@@ -78,7 +78,6 @@ status_t start_serv()
   // Zero out the buffer and read data into buffer
   bzero(buffer, BUFFER_SIZE);
   bytes_read = read(newsockfd, buffer, BUFFER_SIZE - 1);
-
   if (bytes_read < 0)
   {
      LOG_ERROR("Could not read from socket");
