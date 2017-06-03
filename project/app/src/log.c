@@ -14,6 +14,8 @@
 
 // TODO: Make this work on both Linux and Windows for cross compilation
 #define PATH_SEPARATOR "/"
+#define LOG_BUFFER_MAX (1024)
+#define STRNCAT_MAX (LOG_BUFFER_MAX - 1)
 
 // String log levels
 static char * p_log_level_str[] = {
@@ -42,10 +44,6 @@ static char * p_log_color_str[] = {
 #define LOG_FMT         "%-7s %-10s in [%10s] line %4u: "
 
 #endif /* COLOR_LOGS */
-
-
-// Logging mutex so log messages don't get interleaved
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*!
 * @brief Get the file basename in a OS that uses "/" for the separator
@@ -87,6 +85,8 @@ void log_level
 {
   va_list printf_args;
   char * fmt;
+  char log_buffer[LOG_BUFFER_MAX];
+  char fmt_buffer[LOG_BUFFER_MAX];
 
   // Point to the last argument where the variadic arguments start
   va_start(printf_args, line_no);
@@ -94,34 +94,40 @@ void log_level
   // Get the first argument which will be the format for the printf statement
   fmt = va_arg(printf_args, char *);
 
-  // Lock the mutex so multiple calls to logging don't get interleaved
-  pthread_mutex_lock(&log_mutex);
 #ifdef COLOR_LOGS
   // Print header in color
-  printf(LOG_COLOR_FMT,
-         p_log_color_str[level],
-         p_log_level_str[level],
-         get_basename(p_filename, PATH_SEPARATOR),
-         p_function,
-         line_no);
+  snprintf(log_buffer,
+           LOG_BUFFER_MAX,
+           LOG_COLOR_FMT,
+           p_log_color_str[level],
+           p_log_level_str[level],
+           get_basename(p_filename, PATH_SEPARATOR),
+           p_function,
+           line_no);
 #else
   // Print the header without color
-  printf(LOG_FMT,
-         p_log_level_str[level],
-         get_basename(p_filename, PATH_SEPARATOR),
-         p_function,
-         line_no);
+  snprintf(log_buffer,
+           LOG_BUFFER_MAX,
+           LOG_FMT,
+           p_log_level_str[level],
+           get_basename(p_filename, PATH_SEPARATOR),
+           p_function,
+           line_no);
+
 #endif /* COLOR_LOGS */
   // Print the statement provided in the ... variadic parameter
-  vprintf(fmt, printf_args);
+  vsnprintf(fmt_buffer, LOG_BUFFER_MAX, fmt, printf_args);
+  strncat(log_buffer, fmt_buffer, STRNCAT_MAX);
 
 #ifdef COLOR_LOGS
   // Print the ending color and newline
-  printf("\e[0m\n");
+  strncat(log_buffer, "\e[0m\n", STRNCAT_MAX);
 #else
-  printf("\n");
+  //printf("\n");
+  strncat(log_buffer, "\n", STRNCAT_MAX);
 #endif /* COLOR_LOGS */
-  // Unlock mutex
-  pthread_mutex_unlock(&log_mutex);
   va_end(printf_args);
+
+  // Print the generated string
+  printf("%s", log_buffer);
 } // log_level()
