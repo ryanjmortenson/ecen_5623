@@ -12,7 +12,9 @@ ARM_APP_OUT=$(APP_OUT)/$(ARM)
 NON_MAIN_SRC+=
 
 APP_SRC+= \
-	$(APP_SRC_DIR)/test.c
+	$(APP_SRC_DIR)/main.c \
+	$(APP_SRC_DIR)/log.c \
+	$(APP_SRC_DIR)/server.c
 
 TEST_SRC+= \
 	$(NON_MAIN_SRC) \

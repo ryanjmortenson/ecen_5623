@@ -85,6 +85,16 @@ CFLAGS=-I$(APP_INC_DIR) \
        -D PROJECT$(PROJECT) \
        -std=c99
 
+ifneq ($(COLOR_LOGS),)
+	CFLAGS+=-D COLOR_LOGS
+endif
+
+ifeq ($(LOG_LEVEL),)
+	CFLAGS+=-D LOG_LEVEL=0
+else
+	CFLAGS+=-D LOG_LEVEL=$(LOG_LEVEL)
+endif
+
 # Set a map flag to be added CFLAGS for certain targets
 MAP_FLAG=-Wl,-Map,"$@.map"
 
@@ -102,7 +112,7 @@ ifeq ($(PLATFORM),tegra)
        $(ARM_OBJS)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
-else ifneq ($(findstring arm7,$(shell uname -a)),)
+else ifneq ($(findstring armv7,$(shell uname -a)),)
 	CC=gcc
 	CFLAGS+=-lrt \
           -D TEGRA \
@@ -127,11 +137,6 @@ ifneq ($(TYPE),release)
 	CFLAGS+=-g3 -Og
 else
 	CFLAGS+=-O3
-endif
-
-# If VERBOSE is no turn of verbose flag
-ifneq ($(VERBOSE),no)
-	CFLAGS+=-D VERBOSE
 endif
 
 # Setup some build strings
@@ -182,7 +187,7 @@ debug:
 	@echo $(TEST_OBJS)
 
 # Compiles the project into project binary which can be executed with ./project*.out
-$(PROJECT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB)
+$(PROJECT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
 $(PROJECT_OUT_FILE): $(OBJS)
 	$(BUILD_TARGET)
 	$(CC) $(CFLAGS) -o "$@" $(OBJS)
