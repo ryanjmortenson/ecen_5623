@@ -82,15 +82,18 @@ LIB_OUT_FILE=lib$(PROJECT_FILE)$(PROJECT).a
 CFLAGS=-I$(APP_INC_DIR) \
        -Wall \
        -Werror \
+       -D _POSIX_C_SOURCE=199309L \
        -D PROJECT$(PROJECT) \
        -std=c99
 
+# Set colored logs if specified
 ifneq ($(COLOR_LOGS),)
 	CFLAGS+=-D COLOR_LOGS
 endif
 
+# Set log level if specified otherwise set to make level
 ifeq ($(LOG_LEVEL),)
-	CFLAGS+=-D LOG_LEVEL=0
+	CFLAGS+=-D LOG_LEVEL=4
 else
 	CFLAGS+=-D LOG_LEVEL=$(LOG_LEVEL)
 endif
@@ -128,6 +131,7 @@ else
 	OUT_DIR=$(X86_APP_OUT)
 endif
 
+# Create names for size, ar, and objdump binaries
 SIZE=$(subst gcc,size,$(CC))
 AR=$(subst gcc,ar,$(CC))
 OBJDUMP=$(subst gcc,objdump,$(CC))
