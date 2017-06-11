@@ -9,32 +9,44 @@
 #include <stdlib.h>
 
 #include "profiler.h"
+#include "log.h"
 
-struct timespec start;
-struct timespec end;
+struct timespec start[256];
+struct timespec end[256];
+uint8_t num_timers = 0;
 
-void profiler_init()
+#define NSEC_PER_SEC (1000000000)
+
+uint8_t profiler_init()
 {
-  reset_timer();
+  num_timers++;
+  reset_timer(num_timers);
+  return num_timers;
 } // profiler_init()
 
-int8_t start_timer()
+int8_t start_timer(uint8_t timer)
 {
-  return clock_gettime(CLOCK_MONOTONIC, &start);
+  return clock_gettime(CLOCK_MONOTONIC, &start[timer]);
 } // start_timer()
 
-int8_t stop_timer()
+int8_t stop_timer(uint8_t timer)
 {
-  return clock_gettime(CLOCK_MONOTONIC, &end);
+  return clock_gettime(CLOCK_MONOTONIC, &end[timer]);
 } // stop_timer()
 
-void reset_timer()
+void reset_timer(uint8_t timer)
 {
-  start.tv_nsec = end.tv_nsec = 0;
+  start[timer].tv_nsec = end[timer].tv_nsec = 0;
 } // reset_timer()
 
-void get_time(struct timespec * diff)
+void get_time(uint8_t timer, struct timespec * diff)
 {
-  diff->tv_nsec = end.tv_nsec - start.tv_nsec;
-  diff->tv_sec = end.tv_sec - start.tv_sec;
+  diff->tv_nsec = end[timer].tv_nsec - start[timer].tv_nsec;
+  diff->tv_sec = end[timer].tv_sec - start[timer].tv_sec;
+
+  if (diff->tv_nsec < 0)
+  {
+    diff->tv_sec -= 1;
+    diff->tv_nsec += NSEC_PER_SEC;
+  }
 } // get_time()
