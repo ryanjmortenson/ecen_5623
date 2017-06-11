@@ -31,17 +31,17 @@ static char * p_log_level_str[] = {
 static char * p_log_color_str[] = {
   "\e[1;96m", // High=CYAN
   "\e[1;93m", // Medium=YELLOW
-  "\e[0;97m", // Low=WHITE
+  "\e[1;97m", // Low=WHITE
   "\e[1;91m", // Error=RED
   "\e[1;95m", // Fatal=PURPLE
 };
 
 // Format for color
-#define LOG_COLOR_FMT   "%s%-7s %-10s in [%10s] line %4u: "
+#define LOG_COLOR_FMT   "%s%-7s %-10s in [%12s] line %4u: "
 
 #else
 // Format for non-color logs
-#define LOG_FMT         "%-7s %-10s in [%10s] line %4u: "
+#define LOG_FMT         "%-7s %-10s in [%12s] line %4u: "
 
 #endif /* COLOR_LOGS */
 
