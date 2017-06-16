@@ -41,6 +41,8 @@ int8_t abort_test = 0;
 sem_t sem_f10;
 sem_t sem_f20;
 
+uint8_t timer = 0;
+
 /*!
 * @brief Attempts to execute 10ms of fib sequence used a thread function
 * @param[in] param void pointer to parameters
@@ -53,9 +55,6 @@ void * fib_10_func(void * param)
   // Initialize timer diff structer
   struct timespec diff = {.tv_sec = 0, .tv_nsec = 0};
 
-  // Create a profiler
-  uint8_t timer = profiler_init();
-
   // Execute loop until abort is set
   while(!abort_test)
   {
@@ -64,11 +63,10 @@ void * fib_10_func(void * param)
     // If semaphore is available and abort set exit without running test
     if (!abort_test)
     {
-      start_timer(timer);
-      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 2400000);
+      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 2200000);
       stop_timer(timer);
       get_time(timer, &diff);
-      LOG_FATAL("milliseconds: %f", (float)diff.tv_nsec/1000000);
+      LOG_HIGH("milliseconds: %f", (float)diff.tv_nsec/1000000);
     }
   }
 
@@ -88,9 +86,6 @@ void * fib_20_func(void * param)
   // Initialize timer diff structer
   struct timespec diff = {.tv_sec = 0, .tv_nsec = 0};
 
-  // Create a profiler
-  uint8_t timer = profiler_init();
-
   // Execute loop until abort is set
   while(!abort_test)
   {
@@ -99,11 +94,10 @@ void * fib_20_func(void * param)
     // If semaphore is available and abort set exit without running test
     if(!abort_test)
     {
-      start_timer(timer);
-      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 4800000);
+      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 4100000);
       stop_timer(timer);
       get_time(timer, &diff);
-      LOG_FATAL("milliseconds: %f", (float)diff.tv_nsec/1000000);
+      LOG_HIGH("milliseconds: %f", (float)diff.tv_nsec/1000000);
     }
   }
 
@@ -126,11 +120,21 @@ int main()
 
   // This structure will be filled out with scheduling parameters
   struct sched_param  sched;
+  struct sched_param  f10_sched;
+  struct sched_param  f20_sched;
+  int32_t f10_policy = 0;
+  int32_t f20_policy = 0;
 
   // Pthreads and pthread attributes
   pthread_t fib_10;
   pthread_t fib_20;
   pthread_attr_t sched_attr;
+
+  // Create a profiler
+  timer = profiler_init();
+
+  // Start timer
+  start_timer(timer);
 
   // Initialize the pthread attr structure with an explicit schedule of FIFO
   pthread_attr_init(&sched_attr);
@@ -143,6 +147,7 @@ int main()
 
   sched.sched_priority = rt_max_pri;
   res = sched_setscheduler(getpid(),  SCHED_FIFO, &sched);
+  res = pthread_attr_setschedparam(&sched_attr, &sched);
 
   // Display error if set sched failed
   if (res)
@@ -172,18 +177,48 @@ int main()
   }
 
   // Create pthreads for both fib_10 and fib_20
-  pthread_create(&fib_10, &sched_attr, fib_10_func, NULL);
-  pthread_create(&fib_20, &sched_attr, fib_20_func, NULL);
+  sched.sched_priority = rt_max_pri - 1;
+  res = pthread_attr_setschedparam(&sched_attr, &sched);
+  res = pthread_create(&fib_10, &sched_attr, fib_10_func, NULL);
+  if (res)
+  {
+    LOG_ERROR("pthread_create on f10 failed with errno: %s", strerror(errno));
+  }
+  else
+  {
+    LOG_MED("pthread_create on f10 succeeded");
+  }
+
+  sched.sched_priority = rt_max_pri - 2;
+  res = pthread_attr_setschedparam(&sched_attr, &sched);
+  res = pthread_create(&fib_20, &sched_attr, fib_20_func, NULL);
+  if (res)
+  {
+    LOG_ERROR("pthread_create on f20 failed with errno: %s", strerror(errno));
+  }
+  else
+  {
+    LOG_MED("pthread_create on f20 succeeded");
+  }
+
+  res = pthread_getschedparam(fib_10, &f10_policy, &f10_sched);
+  res = pthread_getschedparam(fib_20, &f20_policy, &f20_sched);
+
+  LOG_HIGH("FIB10 policy: %d, priority: %d:", f10_policy, f10_sched.sched_priority);
+  LOG_HIGH("FIB20 policy: %d, priority: %d:", f20_policy, f20_sched.sched_priority);
+
+  sem_post(&sem_f10);
+  sem_post(&sem_f20);
 
   // Execute schedule (put in for loop so it can be run multiple times)
   for (uint8_t i = 0; i < 1; i++)
   {
-    sem_post(&sem_f10); nanosleep(&sleepf10, NULL);
-    sem_post(&sem_f10); nanosleep(&sleepf10, NULL);
-    sem_post(&sem_f20); nanosleep(&sleepf20, NULL);
-    sem_post(&sem_f10); nanosleep(&sleepf10, NULL);
-    sem_post(&sem_f10); nanosleep(&sleepf10, NULL);
-    nanosleep(&sleepf10, NULL);
+    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
+    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
+    nanosleep(&sleepf10, NULL); sem_post(&sem_f20);
+    nanosleep(&sleepf10, NULL); sem_post(&sem_f10);
+    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
+    nanosleep(&sleepf20, NULL);
   }
 
   // Set abort flag
