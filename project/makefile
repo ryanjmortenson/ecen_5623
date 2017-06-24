@@ -91,6 +91,11 @@ ifneq ($(COLOR_LOGS),)
 	CFLAGS+=-D COLOR_LOGS
 endif
 
+# System log turned on
+ifneq ($(SYS_LOG),)
+	CFLAGS+=-D SYS_LOG
+endif
+
 # Set log level if specified otherwise set to make level
 ifeq ($(LOG_LEVEL),)
 	CFLAGS+=-D LOG_LEVEL=4

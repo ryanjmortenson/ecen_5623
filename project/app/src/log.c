@@ -4,13 +4,19 @@
 *
 */
 
+#if defined(SYS_LOG) && defined(COLOR_LOGS)
+  #error "Color logs not allowed in system log"
+#endif
+
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <syslog.h>
 
 #include "log.h"
+#include "project_defs.h"
 
 // TODO: Make this work on both Linux and Windows for cross compilation
 #define PATH_SEPARATOR "/"
@@ -74,6 +80,16 @@ static inline char * get_basename(char * p_filename, char * p_path_seperator)
   return p_filename;
 } // get_basename()
 
+void log_init()
+{
+  openlog("ecen5623", LOG_CONS | LOG_PID, LOG_USER);
+} // log_init()
+
+void log_destroy()
+{
+  closelog();
+} // log_destroy()
+
 void log_level
 (
   log_level_t level,
@@ -128,6 +144,12 @@ void log_level
 #endif /* COLOR_LOGS */
   va_end(printf_args);
 
+#ifdef SYS_LOG
+  // Log to syslog
+  syslog(LOG_INFO, "%s", log_buffer);
+#else
   // Print the generated string
   printf("%s", log_buffer);
+#endif // SYSLOG
+
 } // log_level()
