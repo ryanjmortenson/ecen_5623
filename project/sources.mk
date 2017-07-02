@@ -14,6 +14,7 @@ NON_MAIN_SRC+=
 APP_SRC+= \
 	$(APP_SRC_DIR)/main.c \
 	$(APP_SRC_DIR)/log.c \
+	$(APP_SRC_DIR)/profiler.c \
 	$(APP_SRC_DIR)/server.c
 
 TEST_SRC+= \

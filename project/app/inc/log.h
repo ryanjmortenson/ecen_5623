@@ -19,6 +19,16 @@ typedef enum {
 } log_level_t;
 
 /*!
+* @brief Initializes the syslog
+*/
+void log_init();
+
+/*!
+* @brief Destroy syslog
+*/
+void log_destroy();
+
+/*!
 * @brief Log at a certain level
 * @param[in] level logging level for this statement
 * @param[in] p_filename pointer to the file name
