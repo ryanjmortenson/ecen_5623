@@ -1,10 +1,10 @@
-/** @file exercise3problem2.c
+/** @file exercise3problem5.c
 *
-* @brief Holds the exercise3problem2 source
+* @brief Holds the exercise3problem5 source
 *
 */
 
-#ifdef PROBLEM2
+#ifdef PROBLEM5
 #define _GNU_SOURCE
 #include <errno.h>
 #include <pthread.h>
@@ -20,7 +20,6 @@
 #include "log.h"
 #include "project_defs.h"
 
-#define RAND_SLEEP 1000
 #define MICROSECONDS_PER_SECOND 1000000
 #define DISPLAY_STRING "pitch: %u, roll: %u, yaw: %u, timestamp (s): %u, timestamp (ns): %u"
 
@@ -50,7 +49,6 @@ void * t_update(void * param)
   // Loop until test is aborted
   while(!abort_test)
   {
-    // Lock the mutex
     CHECK_AND_PRINT(res, pthread_mutex_lock(&attitude_mutex), SUCCESS);
 
     if (!res)
@@ -61,19 +59,11 @@ void * t_update(void * param)
       attitude.yaw = rand();
       clock_gettime(CLOCK_MONOTONIC, &attitude.timestamp);
 
-      // Display new random info
-      LOG_LOW(DISPLAY_STRING,
-              attitude.pitch,
-              attitude.roll,
-              attitude.yaw,
-              attitude.timestamp.tv_sec,
-              attitude.timestamp.tv_nsec);
+      // Sleep for 11 seconds to read thread times out
+      usleep(MICROSECONDS_PER_SECOND * 11);
 
       // Try to unlock mutex
       CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
-
-      // Sleep for a random amount between 0 to RAND_SLEEP
-      usleep(rand() % RAND_SLEEP);
     }
     else
     {
@@ -93,12 +83,21 @@ void * t_read(void * param)
 {
   FUNC_ENTRY;
   uint32_t res = 0;
+  struct timespec cur_time;
 
   // Loop until test is aborted
   while(!abort_test)
   {
-    // Lock the mutex
-    CHECK_AND_PRINT(res, pthread_mutex_lock(&attitude_mutex), SUCCESS);
+    // Get the current time to offset with
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+
+    // Add 10 seconds to time
+    cur_time.tv_sec += 10;
+    cur_time.tv_nsec += 0;
+
+    CHECK_AND_PRINT(res,
+                    pthread_mutex_timedlock(&attitude_mutex, &cur_time),
+                    SUCCESS);
 
     // Get random info and timestamp if mutex locked
     if (!res)
@@ -113,20 +112,18 @@ void * t_read(void * param)
 
       // Try to unlock mutex
       CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
-
-      // Sleep for a random amount between 0 to RAND_SLEEP
-      usleep(rand() % RAND_SLEEP);
     }
     else
     {
-      LOG_FATAL("Mutex lock failed t_read");
+      LOG_FATAL("Mutex lock failed t_read after 10 sec");
+      LOG_FATAL("errno: %s", strerror(res));
     }
   }
 
   return NULL;
 } // t_read()
 
-int ex3prob2()
+int ex3prob5()
 {
   FUNC_ENTRY;
 
@@ -174,6 +171,9 @@ int ex3prob2()
                  SUCCESS);
   LOG_MED("pthread_create on t_update_thread succeeded");
 
+  // Sleep for 1 second between thread creations
+  usleep(MICROSECONDS_PER_SECOND);
+
   // Create pthreads t_read_thread
   CHECK_AND_EXIT(res, pthread_attr_setschedparam(&sched_attr, &sched), SUCCESS);
   CHECK_AND_EXIT(res,
@@ -198,7 +198,7 @@ int ex3prob2()
            t_read_sched.sched_priority);
 
   // Yield to threads
-  usleep(MICROSECONDS_PER_SECOND);
+  usleep(MICROSECONDS_PER_SECOND * 20);
   abort_test = 1;
 
   // Wait for threads to join
@@ -206,5 +206,5 @@ int ex3prob2()
   pthread_join(t_read_thread, NULL);
 
   return 0;
-} // ex3prob2()
-#endif // PROBLEM2
+} // ex3prob5()
+#endif // PROBLEM5

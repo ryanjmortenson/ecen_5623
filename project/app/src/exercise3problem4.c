@@ -20,13 +20,13 @@
 #include <unistd.h>
 
 #include "log.h"
-#include "profiler.h"
 #include "project_defs.h"
 
 #define MICROSECONDS_PER_SECOND 1000000
 #define QUEUE_NAME "/queue"
 
-static uint8_t abort_test = 0;
+sem_t sem_q_send;
+sem_t sem_q_recv;
 
 /*!
 * @brief Sends data to message queue
@@ -38,6 +38,10 @@ void * q_send(void * param)
   FUNC_ENTRY;
   uint32_t res = 0;
   char message[] = "This is a message to be sent via queue";
+
+  // This is only used as a gating mechanism so the priority and
+  // schedule can be read reliably
+  sem_wait(&sem_q_send);
 
   // Open queue as write only for sending thread
   mqd_t test = mq_open(QUEUE_NAME, O_WRONLY | O_CREAT, S_IRWXU, NULL);
@@ -70,6 +74,10 @@ void * q_recv(void * param)
   uint32_t res = 0;
   char * data;
   struct mq_attr attr;
+
+  // This is only used as a gating mechanism so the priority and
+  // schedule can be read reliably
+  sem_wait(&sem_q_recv);
 
   // Open queue as read only for sending thread
   mqd_t test = mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL);
@@ -122,7 +130,7 @@ void * q_recv(void * param)
   return NULL;
 } // q_recv()
 
-int exercise3problem4()
+int ex3prob4()
 {
   FUNC_ENTRY;
 
@@ -149,6 +157,12 @@ int exercise3problem4()
                  pthread_attr_setschedpolicy(&sched_attr, SCHED_FIFO),
                  SUCCESS);
 
+  // Create semaphores for to gate threads starting
+  CHECK_AND_EXIT(res, sem_init(&sem_q_recv, 0, 0), SUCCESS);
+  LOG_LOW("Init sem_q_recv successful");
+  CHECK_AND_EXIT(res, sem_init(&sem_q_send, 0, 0), SUCCESS);
+  LOG_LOW("Init sem_q_send successful");
+
   // Get the max priority to assign to threads and main process
   int32_t rt_max_pri = sched_get_priority_max(SCHED_FIFO);
 
@@ -172,6 +186,8 @@ int exercise3problem4()
                  SUCCESS);
   LOG_MED("pthread_create on q_recv_thread succeeded");
 
+  usleep(MICROSECONDS_PER_SECOND);
+
   // Get schedule to display
   CHECK_AND_PRINT(res,
                  pthread_getschedparam(q_send_thread, &q_send_policy, &q_send_sched),
@@ -188,13 +204,17 @@ int exercise3problem4()
            q_send_policy,
            q_recv_sched.sched_priority);
 
+  // Post semaphores
+  LOG_LOW("Posting semaphore for to start threads");
+  sem_post(&sem_q_recv);
+  sem_post(&sem_q_send);
+
   // Yield to threads
   usleep(MICROSECONDS_PER_SECOND);
-  abort_test = 1;
 
   // Wait for threads to join
   pthread_join(q_send_thread, NULL);
   pthread_join(q_recv_thread, NULL);
 
   return 0;
-} // main()
+} // ex3prob4()

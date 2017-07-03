@@ -276,6 +276,7 @@ CLEAN+=$(OUT) \
        *.asm \
        *.o \
        *.out \
+       *.map \
        *.objdump \
        $(UNIT_TEST_OUT) \
        $(LIB_OUT_FILE) \

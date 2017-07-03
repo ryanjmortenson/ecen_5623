@@ -11,13 +11,19 @@
 * @brief Execute exercise 3 problem 2
 * @return 0
 */
-int exercise3problem2();
+int ex3prob2();
 
 /*!
 * @brief Execute exercise 3 problem 4
 * @return 0
 */
-int exercise3problem4();
+int ex3prob4();
+
+/*!
+* @brief Execute exercise 3 problem 5
+* @return 0
+*/
+int ex3prob5();
 
 
 #endif /* __EXERCISE3_H__ */
