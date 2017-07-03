@@ -67,23 +67,28 @@ MAPS=$(X86_OUT_DIR)/$(MAP_FILE) \
 -include sources.mk
 
 # Set define of project 2 as default
-ifeq ($(PROJECT),)
-	PROJECT=1
+ifeq ($(EXERCISE),)
+	EXERCISE=2
 else
-	PROJECT=$(PROJECT)
+	EXERCISE=$(EXERCISE)
+endif
+
+ifeq ($(PROBLEM),)
+	PROBLEM=2
+else
+	PROBLEM=$(PROBLEM)
 endif
 
 # Project output file names
-PROJECT_FILE=project
-PROJECT_OUT_FILE=$(PROJECT_FILE)$(PROJECT).out
-LIB_OUT_FILE=lib$(PROJECT_FILE)$(PROJECT).a
+EXERCISE_OUT_FILE=exercise$(EXERCISE)problem$(PROBLEM).out
+LIB_OUT_FILE=lib$(EXERCISE_FILE)$(EXERCISE).a
 
 # Set CFLAGS used by every build type
 CFLAGS=-I$(APP_INC_DIR) \
        -Wall \
        -Werror \
        -D _POSIX_C_SOURCE=199309L \
-       -D PROJECT$(PROJECT) \
+       -D PROBLEM$(PROBLEM)\
        -std=c99
 
 # Set colored logs if specified
@@ -157,7 +162,7 @@ BUILD_WITH=@echo "Building with $<"
 
 # Build will build project
 build: $(OBJS)
-	$(MAKE) $(PROJECT_OUT_FILE)
+	$(MAKE) $(EXERCISE_OUT_FILE)
 
 # PHONY target so you don't have to type .out
 test:
@@ -196,10 +201,10 @@ debug:
 	@echo $(TEST_OBJS)
 
 # Compiles the project into project binary which can be executed with ./project*.out
-$(PROJECT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
-$(PROJECT_OUT_FILE): $(OBJS)
+$(EXERCISE_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
+$(EXERCISE_OUT_FILE): $(OBJS)
 	$(BUILD_TARGET)
-	$(CC) $(CFLAGS) -o "$@" $(OBJS)
+	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lrt
 	$(SIZE) $@
 
 # Build the library file for static linking
@@ -239,10 +244,10 @@ alli :
 	$(CC) $(CFLAGS) -c -o "$@" "$<"
 
 # Covert all object file to objdump files
-allobjdump: $(OBJS) $(PROJECT_OUT_FILE)
+allobjdump: $(OBJS) $(EXERCISE_OUT_FILE)
 	@echo "Build all objdump files"
 	$(MAKE) $(patsubst %.o,%.objdump,$(OBJS))
-	$(MAKE) $(PROJECT_OUT_FILE).objdump
+	$(MAKE) $(EXERCISE_OUT_FILE).objdump
 
 # Do an objdump on a file
 %.objdump: %.o
@@ -267,10 +272,10 @@ $(OUT_DIR)/%.o: $(APP_SRC_DIR)/%.c
 # List of items that need to be cleaned
 CLEAN+=$(OUT) \
        $(MAPS) \
-       $(PROJECT_FILE)* \
        *.i \
        *.asm \
        *.o \
+       *.out \
        *.objdump \
        $(UNIT_TEST_OUT) \
        $(LIB_OUT_FILE) \
