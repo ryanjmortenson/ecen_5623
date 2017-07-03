@@ -9,232 +9,197 @@
 #include <sched.h>
 #include <semaphore.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "log.h"
-#include "server.h"
 #include "profiler.h"
+#include "project_defs.h"
 
-#define FIB_LIMIT_FOR_32_BIT 47
+#define RAND_SLEEP 1000
+#define MICROSECONDS_PER_SECOND 1000000
+#define DISPLAY_STRING "pitch: %u, roll: %u, yaw: %u, timestamp (s): %u, timestamp (ns): %u"
 
-// Used the pthread examples for the fib sequence code
-#define FIB_TEST(seqCnt, iterCnt)      \
-   uint32_t jdx = 0;                   \
-   volatile uint32_t idx = 0;          \
-   uint32_t fib = 0, fib0 = 0, fib1 = 1; \
-   for(idx=0; idx < iterCnt; idx++)    \
-   {                                   \
-      fib = fib0 + fib1;               \
-      while(jdx < seqCnt)              \
-      {                                \
-         fib0 = fib1;                  \
-         fib1 = fib;                   \
-         fib = fib0 + fib1;            \
-         jdx++;                        \
-      }                                \
-   }                                   \
+uint8_t abort_test = 0;
 
-int8_t abort_test = 0;
-sem_t sem_f10;
-sem_t sem_f20;
+// Structure used in threads
+struct {
+  uint32_t pitch;
+  uint32_t roll;
+  uint32_t yaw;
+  struct timespec timestamp;
+} attitude;
 
-uint8_t timer = 0;
+// Mutex for accessing
+pthread_mutex_t attitude_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*!
-* @brief Attempts to execute 10ms of fib sequence used a thread function
+* @brief Updates the attitude structure
 * @param[in] param void pointer to parameters
 * @return NULL
 */
-void * fib_10_func(void * param)
+void * t_update(void * param)
 {
   FUNC_ENTRY;
+  uint32_t res = 0;
+  CHECK_AND_PRINT(res, pthread_mutex_lock(&attitude_mutex), SUCCESS);
 
-  // Initialize timer diff structer
-  struct timespec diff = {.tv_sec = 0, .tv_nsec = 0};
-
-  // Execute loop until abort is set
+  // Loop until test is aborted
   while(!abort_test)
   {
-    sem_wait(&sem_f10);
-
-    // If semaphore is available and abort set exit without running test
-    if (!abort_test)
+    // Get random info and timestamp if mutex locked
+    if (!res)
     {
-      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 2200000);
-      stop_timer(timer);
-      get_time(timer, &diff);
-      LOG_HIGH("milliseconds: %f", (float)diff.tv_nsec/1000000);
+      attitude.pitch = rand();
+      attitude.roll = rand();
+      attitude.yaw = rand();
+      clock_gettime(CLOCK_MONOTONIC, &attitude.timestamp);
+
+      // Display new random info
+      LOG_LOW(DISPLAY_STRING,
+              attitude.pitch,
+              attitude.roll,
+              attitude.yaw,
+              attitude.timestamp.tv_sec,
+              attitude.timestamp.tv_nsec);
+
+      // Try to unlock mutex
+      CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
+
+      // Sleep for a random amount between 0 to RAND_SLEEP
+      usleep(rand() % RAND_SLEEP);
+    }
+    else
+    {
+      LOG_FATAL("Mutex lock failed in t_update");
     }
   }
 
-  LOG_LOW("Exiting f10");
   return NULL;
-} // fib_10_func()
+} // t_update()
 
 /*!
-* @brief Attempts to execute 20ms of fib sequence used a thread function
+* @brief Reads attitude structure
 * @param[in] param void pointer to parameters
 * @return NULL
 */
-void * fib_20_func(void * param)
+void * t_read(void * param)
 {
   FUNC_ENTRY;
+  uint32_t res = 0;
+  CHECK_AND_PRINT(res, pthread_mutex_lock(&attitude_mutex), SUCCESS);
 
-  // Initialize timer diff structer
-  struct timespec diff = {.tv_sec = 0, .tv_nsec = 0};
-
-  // Execute loop until abort is set
+  // Loop until test is aborted
   while(!abort_test)
   {
-    sem_wait(&sem_f20);
-
-    // If semaphore is available and abort set exit without running test
-    if(!abort_test)
+    // Get random info and timestamp if mutex locked
+    if (!res)
     {
-      FIB_TEST(FIB_LIMIT_FOR_32_BIT, 4100000);
-      stop_timer(timer);
-      get_time(timer, &diff);
-      LOG_HIGH("milliseconds: %f", (float)diff.tv_nsec/1000000);
+
+      // Display info from shared data structure
+      LOG_LOW(DISPLAY_STRING,
+              attitude.pitch,
+              attitude.roll,
+              attitude.yaw,
+              attitude.timestamp.tv_sec,
+              attitude.timestamp.tv_nsec);
+
+      // Try to unlock mutex
+      CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
+
+      // Sleep for a random amount between 0 to RAND_SLEEP
+      usleep(rand() % RAND_SLEEP);
+    }
+    else
+    {
+      LOG_FATAL("Mutex lock failed t_read");
     }
   }
 
-  LOG_LOW("Exiting f20");
   return NULL;
-} // fib_10_func()
+} // t_update()
 
 int main()
 {
   FUNC_ENTRY;
 
-  /****************************************************************************
-   * The RT Clock pthread code was used as an example for the set up of the
-   * pthreads with RT priority.
-   * *************************************************************************/
-
-  // Setup the timespec structures with the time out requires 10 ms and 20 ms
-  struct timespec sleepf10 = {.tv_sec = 0, .tv_nsec = 10000000};
-  struct timespec sleepf20 = {.tv_sec = 0, .tv_nsec = 20000000};
-
   // This structure will be filled out with scheduling parameters
   struct sched_param  sched;
-  struct sched_param  f10_sched;
-  struct sched_param  f20_sched;
-  int32_t f10_policy = 0;
-  int32_t f20_policy = 0;
+  struct sched_param  t_update_sched;
+  struct sched_param  t_read_sched;
+  int32_t t_read_policy = 0;
+  int32_t t_update_policy = 0;
+  int32_t res = 0;
 
   // Pthreads and pthread attributes
-  pthread_t fib_10;
-  pthread_t fib_20;
+  pthread_t t_update_thread;
+  pthread_t t_read_thread;
   pthread_attr_t sched_attr;
 
-  // Create a profiler
-  timer = profiler_init();
-
-  // Start timer
-  start_timer(timer);
+  // Initialize attitude structure
+  attitude.pitch = 1;
+  attitude.roll = 2;
+  attitude.yaw = 3;
+  clock_gettime(CLOCK_MONOTONIC, &attitude.timestamp);
 
   // Initialize the pthread attr structure with an explicit schedule of FIFO
-  pthread_attr_init(&sched_attr);
-  pthread_attr_setinheritsched(&sched_attr, PTHREAD_EXPLICIT_SCHED);
-  pthread_attr_setschedpolicy(&sched_attr, SCHED_FIFO);
+  CHECK_AND_EXIT(res, pthread_attr_init(&sched_attr), SUCCESS);
+  CHECK_AND_EXIT(res,
+                 pthread_attr_setinheritsched(&sched_attr, PTHREAD_EXPLICIT_SCHED),
+                 SUCCESS);
+  CHECK_AND_EXIT(res,
+                 pthread_attr_setschedpolicy(&sched_attr, SCHED_FIFO),
+                 SUCCESS);
 
   // Get the max priority to assign to threads and main process
   int32_t rt_max_pri = sched_get_priority_max(SCHED_FIFO);
-  uint32_t res = 0;
 
+  // Set the scheduler for the main thread
   sched.sched_priority = rt_max_pri;
-  res = sched_setscheduler(getpid(),  SCHED_FIFO, &sched);
-  res = pthread_attr_setschedparam(&sched_attr, &sched);
+  CHECK_AND_EXIT(res, sched_setscheduler(getpid(), SCHED_FIFO, &sched), SUCCESS);
+  CHECK_AND_EXIT(res, pthread_attr_setschedparam(&sched_attr, &sched), SUCCESS);
 
-  // Display error if set sched failed
-  if (res)
-  {
-    LOG_ERROR("sched_setscheduler failed with errno: %s", strerror(errno));
-  }
-
-  // Init both semaphores
-  res = sem_init(&sem_f10, 0, 0);
-  if (res)
-  {
-    LOG_ERROR("sem_init on f10 failed with errno: %s", strerror(errno));
-  }
-  else
-  {
-    LOG_MED("sem_init on f10 succeeded");
-  }
-
-  res = sem_init(&sem_f20, 0, 0);
-  if (res)
-  {
-    LOG_ERROR("sem_init on f20 failed with errno: %s", strerror(errno));
-  }
-  else
-  {
-    LOG_MED("sem_init on f20 succeeded");
-  }
-
-  // Create pthreads for both fib_10 and fib_20
+  // Create pthreads t_update_thread
   sched.sched_priority = rt_max_pri - 1;
-  res = pthread_attr_setschedparam(&sched_attr, &sched);
-  res = pthread_create(&fib_10, &sched_attr, fib_10_func, NULL);
-  if (res)
-  {
-    LOG_ERROR("pthread_create on f10 failed with errno: %s", strerror(errno));
-  }
-  else
-  {
-    LOG_MED("pthread_create on f10 succeeded");
-  }
+  CHECK_AND_EXIT(res, pthread_attr_setschedparam(&sched_attr, &sched), SUCCESS);
+  CHECK_AND_EXIT(res,
+                 pthread_create(&t_update_thread, &sched_attr, t_update, NULL),
+                 SUCCESS);
+  LOG_MED("pthread_create on t_update_thread succeeded");
 
-  sched.sched_priority = rt_max_pri - 2;
-  res = pthread_attr_setschedparam(&sched_attr, &sched);
-  res = pthread_create(&fib_20, &sched_attr, fib_20_func, NULL);
-  if (res)
-  {
-    LOG_ERROR("pthread_create on f20 failed with errno: %s", strerror(errno));
-  }
-  else
-  {
-    LOG_MED("pthread_create on f20 succeeded");
-  }
+  // Create pthreads t_read_thread
+  CHECK_AND_EXIT(res, pthread_attr_setschedparam(&sched_attr, &sched), SUCCESS);
+  CHECK_AND_EXIT(res,
+                 pthread_create(&t_read_thread, &sched_attr, t_read, NULL),
+                 SUCCESS);
+  LOG_MED("pthread_create on t_read_thread succeeded");
 
-  res = pthread_getschedparam(fib_10, &f10_policy, &f10_sched);
-  res = pthread_getschedparam(fib_20, &f20_policy, &f20_sched);
+  // Get schedule to display
+  CHECK_AND_EXIT(res,
+                 pthread_getschedparam(t_update_thread, &t_read_policy, &t_update_sched),
+                 SUCCESS);
+  CHECK_AND_EXIT(res,
+                 pthread_getschedparam(t_read_thread, &t_update_policy, &t_read_sched),
+                 SUCCESS);
 
-  LOG_HIGH("FIB10 policy: %d, priority: %d:", f10_policy, f10_sched.sched_priority);
-  LOG_HIGH("FIB20 policy: %d, priority: %d:", f20_policy, f20_sched.sched_priority);
+  // Display schedule
+  LOG_HIGH("t_read policy: %d, priority: %d:",
+           t_read_policy,
+           t_update_sched.sched_priority);
+  LOG_HIGH("t_update policy: %d, priority: %d:",
+           t_update_policy,
+           t_read_sched.sched_priority);
 
-  sem_post(&sem_f10);
-  sem_post(&sem_f20);
-
-  // Execute schedule (put in for loop so it can be run multiple times)
-  for (uint8_t i = 0; i < 1; i++)
-  {
-    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
-    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
-    nanosleep(&sleepf10, NULL); sem_post(&sem_f20);
-    nanosleep(&sleepf10, NULL); sem_post(&sem_f10);
-    nanosleep(&sleepf20, NULL); sem_post(&sem_f10);
-    nanosleep(&sleepf20, NULL);
-  }
-
-  // Set abort flag
+  // Yield to threads
+  usleep(MICROSECONDS_PER_SECOND);
   abort_test = 1;
 
-  // Post semaphores so the sem_wait calls stop blocking in each thread
-  sem_post(&sem_f20);
-  sem_post(&sem_f10);
-
   // Wait for threads to join
-  pthread_join(fib_10, NULL);
-  pthread_join(fib_20, NULL);
-
-  // Destroy semaphores
-  sem_destroy(&sem_f10);
-  sem_destroy(&sem_f20);
+  pthread_join(t_update_thread, NULL);
+  pthread_join(t_read_thread, NULL);
 
   return 0;
 } // main()
