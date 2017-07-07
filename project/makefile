@@ -275,7 +275,7 @@ CLEAN+=$(OUT) \
        *.i \
        *.asm \
        *.o \
-       *.out \
+       exercise*.out \
        *.map \
        *.objdump \
        $(UNIT_TEST_OUT) \

@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
-#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +22,7 @@
 #define MICROSECONDS_PER_SECOND 1000000
 #define DISPLAY_STRING "pitch: %u, roll: %u, yaw: %u, timestamp (s): %u, timestamp (ns): %u"
 
+// Flag for aborting test
 static uint8_t abort_test = 0;
 
 // Structure used in threads
@@ -33,7 +33,7 @@ struct {
   struct timespec timestamp;
 } attitude;
 
-// Mutex for accessing
+// Mutex for accessing attitude structure
 pthread_mutex_t attitude_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*!
@@ -45,12 +45,17 @@ void * t_update(void * param)
 {
   FUNC_ENTRY;
   uint32_t res = 0;
+  struct timespec cur_time;
 
   // Loop until test is aborted
   while(!abort_test)
   {
+    // Display time and acquire lock
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+    LOG_MED("Acquired Lock at %d sec %d nsec", cur_time.tv_sec, cur_time.tv_nsec);
     CHECK_AND_PRINT(res, pthread_mutex_lock(&attitude_mutex), SUCCESS);
 
+    // Only update if mutex lock succeeded
     if (!res)
     {
       // Get random info and timestamp if mutex locked
@@ -60,7 +65,7 @@ void * t_update(void * param)
       clock_gettime(CLOCK_MONOTONIC, &attitude.timestamp);
 
       // Sleep for 11 seconds to read thread times out
-      usleep(MICROSECONDS_PER_SECOND * 11);
+      usleep(MICROSECONDS_PER_SECOND * 15);
 
       // Try to unlock mutex
       CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
@@ -95,11 +100,12 @@ void * t_read(void * param)
     cur_time.tv_sec += 10;
     cur_time.tv_nsec += 0;
 
+    // Lock mutex with a timed lock
     CHECK_AND_PRINT(res,
                     pthread_mutex_timedlock(&attitude_mutex, &cur_time),
                     SUCCESS);
 
-    // Get random info and timestamp if mutex locked
+    // Only look at data if time lock was successful
     if (!res)
     {
       // Display info from shared data structure
@@ -112,10 +118,14 @@ void * t_read(void * param)
 
       // Try to unlock mutex
       CHECK_AND_PRINT(res, pthread_mutex_unlock(&attitude_mutex), SUCCESS);
+
+      // Exit after printing 1 update
+      return NULL;
     }
     else
     {
-      LOG_FATAL("Mutex lock failed t_read after 10 sec");
+      clock_gettime(CLOCK_REALTIME, &cur_time);
+      LOG_FATAL("No new data at %d sec %d nsec", cur_time.tv_sec, cur_time.tv_nsec);
       LOG_FATAL("errno: %s", strerror(res));
     }
   }

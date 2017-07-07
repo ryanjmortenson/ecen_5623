@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
-#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +23,7 @@
 #define MICROSECONDS_PER_SECOND 1000000
 #define DISPLAY_STRING "pitch: %u, roll: %u, yaw: %u, timestamp (s): %u, timestamp (ns): %u"
 
+// Flag for aborting test
 static uint8_t abort_test = 0;
 
 // Structure used in threads
@@ -34,7 +34,7 @@ struct {
   struct timespec timestamp;
 } attitude;
 
-// Mutex for accessing
+// Mutex for accessing the attitude
 pthread_mutex_t attitude_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*!
