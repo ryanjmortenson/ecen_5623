@@ -15,6 +15,9 @@ APP_SRC+= \
 	$(APP_SRC_DIR)/main.c \
 	$(APP_SRC_DIR)/log.c \
 	$(APP_SRC_DIR)/profiler.c \
+	$(APP_SRC_DIR)/exercise3problem2.c \
+	$(APP_SRC_DIR)/exercise3problem4.c \
+	$(APP_SRC_DIR)/exercise3problem5.c \
 	$(APP_SRC_DIR)/server.c
 
 TEST_SRC+= \
