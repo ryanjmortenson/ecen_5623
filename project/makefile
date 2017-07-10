@@ -1,27 +1,6 @@
-##############################################################################
-#
-# There are different targets in the make file that can be built.  When no
-# platform is supplied with the PLATFORM=<platform> option the build will use
-# the host machines compiler.
-#
-# * **make** - Will build the current project for the host.
-# * **make *<c_file*.asm** - Output an assembly file for the source file
-#                            specified.
-# * **make allasm** - Output all assembly files for the project.
-# * **make *c_file*.i** - Output a preprocessor file for the source file
-#                         specified.
-# * **make alli** - Output all preprocessor files for the project.
-# * **make *c_file*.o** - Output an object file for the source file
-#                         specified.
-# * **make compile-all** - Output all object files project.
-# * **make *c_file*.map** - Output a map file for the source file specified.
-# * **make test** - Create the unit tests for host.
-# * **make build-lib** - Create a static library for the project.
-# * **make clean** - Clean all files for the project
-# * **make super-clean** - Clean all files for the project and the cmocka out
-#                          directory
-#
-##############################################################################
+###############################################################################
+# See README.md for build information                                         #
+###############################################################################
 
 # Some commands used for building
 RM:=rm -rf
@@ -40,16 +19,6 @@ export $(X86)
 export $(ARM)
 export $(MK_DIR)
 export $(CFLAGS)
-
-# Unit test output filename
-UNIT_TEST_OUT=test.out
-
-# CMOCKA unit test variables
-CMOCKA_BUILD_DIR=cmocka-out
-CMOCKA_DIR=cmocka
-CMOCKA_LIB_OUT_DIR=$(CMOCKA_BUILD_DIR)/lib
-CMOCKA_INC_OUT_DIR=$(CMOCKA_BUILD_DIR)/include
-CMOCKA_LIB=$(CMOCKA_LIB_OUT_DIR)/libcmocka.a
 
 # Target out directories when building
 X86_OUT_DIR=$(OUT)/$(X86)
@@ -158,35 +127,11 @@ BUILD_TARGET=@echo "Building Target $@"
 BUILD_WITH=@echo "Building with $<"
 
 # Set PHONY for all targets that don't have outputs for tracking
-.PHONY: build compile-all debug allasm alli allobjdump clean super-clean test
+.PHONY: build compile-all debug allasm alli allobjdump clean super-clean
 
 # Build will build project
 build: $(OBJS)
 	$(MAKE) $(EXERCISE_OUT_FILE)
-
-# PHONY target so you don't have to type .out
-test:
-	@echo $(MAKECMDGOALS)
-	@echo $(CFLAGS)
-	$(MAKE) $(UNIT_TEST_OUT)
-
-# Build the unit test binary
-$(UNIT_TEST_OUT): CFLAGS+=-I$(CMOCKA_INC_OUT_DIR) -D UNITTEST
-$(UNIT_TEST_OUT): $(CMOCKA_LIB) $(TEST_OBJS)
-	$(CC) $(CFLAGS) -o "$@" $(TEST_OBJS) $(CMOCKA_LIB)
-
-# Build the cmocka library
-$(CMOCKA_LIB):
-	@echo "Installing and making CMOCKA static library"
-	$(MK_DIR) $(CMOCKA_BUILD_DIR)
-	$(CD) $(CMOCKA_BUILD_DIR) && \
-	$(CMAKE_CMD) \
-	-DCMAKE_INSTALL_PREFIX=. \
-	-DCMAKE_BUILD_TYPE=debug \
-	-DCMAKE_C_COMPILER=$(CC) \
-	-DWITH_STATIC_LIB=ON \
-	../cmocka/ && \
-	$(MAKE_CMD) install
 
 # Build will build project library
 build-lib: $(OBJS)
@@ -286,7 +231,3 @@ CLEAN+=$(OUT) \
 # build
 clean:
 	$(RM) $(CLEAN)
-
-# Cleans everything including the cmocka build dir
-super-clean:
-	$(RM) $(CLEAN) $(CMOCKA_BUILD_DIR)
