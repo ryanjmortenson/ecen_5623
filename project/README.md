@@ -15,14 +15,14 @@ Repository Contents
 Device Documentation
 --------------
 
-* **[Nvidia TK1](http://www.nvidia.com/object/jetson-tk1-embedded-dev-kit.html)** - Nvidia TK1 used for in class projects and homework.
+* **[Nvidia Jetson TK1](http://www.nvidia.com/object/jetson-tk1-embedded-dev-kit.html)** - Nvidia Jetson TK1 used for in class projects and homework.
 
 Make instructions
 ------------
 
 This project requires the following tool-chains to be able to build all targets:
 
-* **gcc-arm-linux-gnueabihf** - Used to build project for Beagle Bone Black.
+* **gcc-arm-linux-gnueabihf** - Nvidia Jetson TK1
 * **gcc** - Used to build the project for your development workstation.
 
 There are different targets in the make file that can be built.  When no

@@ -11,7 +11,7 @@ Repository Contents
 Device Documentation
 --------------
 
-* **[Nvidia TK1](http://www.nvidia.com/object/jetson-tk1-embedded-dev-kit.html)** - Nvidia TK1 used for in class projects and homework.
+* **[Nvidia Jetson TK1](http://www.nvidia.com/object/jetson-tk1-embedded-dev-kit.html)** - Nvidia Jetson TK1 used for in class projects and homework.
 
 Make instructions
 ------------
