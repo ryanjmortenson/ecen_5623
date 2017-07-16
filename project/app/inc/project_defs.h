@@ -13,27 +13,57 @@ typedef enum status {
 } status_t;
 
 
-// Check and exit macro to be used from the main function
-#define CHECK_AND_EXIT(res, func, val)                          \
+// Check value not equal, print errno, and exit
+#define NOT_EQ_EXIT_E(res, func, val)                           \
   if((res = func) != val)                                       \
   {                                                             \
     LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
     exit(1);                                                    \
   }
 
-// Check and return macro to be used from subroutines
-#define CHECK_AND_RETURN(res, func, val) \
+// Check value not equal, print errno, and return failure
+#define NOT_EQ_RET_E(res, func, val, ret)                       \
   if((res = func) != val)                                       \
   {                                                             \
     LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
-    return FAILURE;                                             \
+    return ret;                                                 \
   }
 
-// Check and return macro to be used from subroutines
-#define CHECK_AND_PRINT(res, func, val) \
-  if((res = func) != val)                                       \
+// Check value equal, print errno, and return failure
+#define EQ_RET_E(res, func, val, ret)                           \
+  if((res = func) == val)                                       \
   {                                                             \
     LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
+    return ret;                                                 \
+  }
+
+// Check value equal, print errno, and return failure
+#define EQ_EXIT_E(res, func, val)                               \
+  if((res = func) == val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
+    exit(1);                                                    \
+  }
+
+#define PT_NOT_EQ_RET(res, func, val, ret)                      \
+  if((res = func) != val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(res));   \
+    return ret;                                                 \
+  }
+
+#define PT_EQ_RET(res, func, val, ret)                          \
+  if((res = func) == val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(res));   \
+    return ret;                                                 \
+  }
+
+#define PT_NOT_EQ_EXIT(res, func, val)                          \
+  if((res = func) != val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(res));   \
+    exit(res);                                                  \
   }
 
 #endif /* __PROJECT_DEFS_H__ */

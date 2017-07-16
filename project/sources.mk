@@ -11,26 +11,33 @@ ARM_APP_OUT=$(APP_OUT)/$(ARM)
 # Sources for the application
 NON_MAIN_SRC+=
 
-APP_SRC+= \
+APP_SRC_C += \
 	$(APP_SRC_DIR)/main.c \
 	$(APP_SRC_DIR)/log.c \
 	$(APP_SRC_DIR)/profiler.c \
-	$(APP_SRC_DIR)/exercise3problem2.c \
-	$(APP_SRC_DIR)/exercise3problem4.c \
-	$(APP_SRC_DIR)/exercise3problem5.c \
 	$(APP_SRC_DIR)/server.c
+
+APP_SRC_CPP += \
+	$(APP_SRC_DIR)/exercise4problem5.cpp
 
 TEST_SRC+= \
 	$(NON_MAIN_SRC) \
 
 # Make a src list without any directories to feed into the allasm/alli targets
-SRC_LIST = $(subst $(APP_SRC_DIR)/,,$(APP_SRC))
+SRC_LIST = $(subst $(APP_SRC_DIR)/,,$(APP_SRC_C))
+SRC_LIST = $(subst $(APP_SRC_DIR)/,,$(APP_SRC_CPP))
 
 # Build a list objects for each platform
-X86_OBJS = $(subst src,out/$(X86),$(patsubst %.c,%.o,$(APP_SRC)))
-ARM_OBJS = $(subst src,out/$(ARM),$(patsubst %.c,%.o,$(APP_SRC)))
+X86_OBJS = $(subst src,out/$(X86),$(patsubst %.c,%.o,$(APP_SRC_C)))
+ARM_OBJS = $(subst src,out/$(ARM),$(patsubst %.c,%.o,$(APP_SRC_C)))
 X86_TEST_OBJS = $(subst src,out/$(X86),$(patsubst %.c,%.o,$(TEST_SRC)))
 ARM_TEST_OBJS = $(subst src,out/$(ARM),$(patsubst %.c,%.o,$(TEST_SRC)))
+
+# Build a list objects for each platform
+X86_OBJS += $(subst src,out/$(X86),$(patsubst %.cpp,%.o,$(APP_SRC_CPP)))
+ARM_OBJS += $(subst src,out/$(ARM),$(patsubst %.cpp,%.o,$(APP_SRC_CPP)))
+X86_TEST_OBJS += $(subst src,out/$(X86),$(patsubst %.cpp,%.o,$(TEST_SRC)))
+ARM_TEST_OBJS += $(subst src,out/$(ARM),$(patsubst %.cpp,%.o,$(TEST_SRC)))
 
 # Build a list of .d files to clean
 APP_DEPS += $(patsubst %.o,%.d, $(OBJS) $(25Z_OBJS) $(ARM_OBJS))

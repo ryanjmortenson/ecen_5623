@@ -9,10 +9,10 @@
 #endif
 
 #include <pthread.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <cstdarg>
 #include <syslog.h>
 
 #include "log.h"
@@ -24,7 +24,7 @@
 #define STRNCAT_MAX (LOG_BUFFER_MAX - 1)
 
 // String log levels
-static char * p_log_level_str[] = {
+static const char * p_log_level_str[] = {
   "HIGH",
   "MEDIUM",
   "LOW",
@@ -34,7 +34,7 @@ static char * p_log_level_str[] = {
 
 #ifdef COLOR_LOGS
 // String log level colors
-static char * p_log_color_str[] = {
+static const char * p_log_color_str[] = {
   "\e[1;96m", // High=CYAN
   "\e[1;93m", // Medium=YELLOW
   "\e[1;97m", // Low=WHITE
@@ -57,7 +57,7 @@ static char * p_log_color_str[] = {
 * @param[in] p_path_separator pointer to the path separator
 * @return pointer to the basename
 */
-static inline char * get_basename(char * p_filename, char * p_path_seperator)
+static inline char * get_basename(char * p_filename, const char * p_path_seperator)
 {
   uint8_t found_last_occurence = 0;
 
@@ -82,12 +82,16 @@ static inline char * get_basename(char * p_filename, char * p_path_seperator)
 
 void log_init()
 {
+#ifdef SYS_LOG
   openlog("ecen5623", LOG_CONS | LOG_PID, LOG_USER);
+#endif
 } // log_init()
 
 void log_destroy()
 {
+#ifdef SYS_LOG
   closelog();
+#endif
 } // log_destroy()
 
 void log_level

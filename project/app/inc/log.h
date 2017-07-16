@@ -7,7 +7,7 @@
 #ifndef __LOG_H__
 #define __LOG_H__
 
-#include <stdio.h>
+#include <cstdio>
 
 // Logging level enumerations
 typedef enum {
@@ -46,10 +46,10 @@ void log_level
   ...
 );
 
-#define LOG(level, ...) log_level(level,         \
-                                  __FILE__,      \
-                                  __FUNCTION__,  \
-                                  __LINE__,      \
+#define LOG(level, ...) log_level(level,                 \
+                                  (char *)__FILE__,      \
+                                  __FUNCTION__,          \
+                                  __LINE__,              \
                                   __VA_ARGS__)
 
 // Different log levels which can be turned on/off by setting LOG_LEVEL
@@ -72,7 +72,7 @@ void log_level
 #endif  /* LOG_LEVEL > 2 */
 
 // Function entry log.  This should be placed at the beginning of each function
-#define FUNC_ENTRY LOG_LOW("Entering %s()", __FUNCTION__)
+#define FUNC_ENTRY LOG_MED("Entering %s()", __FUNCTION__)
 
 // Error and Fatal definitions.  Fatal should be used sparingly and
 // mostly debugging
