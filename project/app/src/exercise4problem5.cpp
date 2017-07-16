@@ -33,15 +33,18 @@ using namespace cv;
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (100)
+#define NUM_FRAMES (25)
+#define PERIOD (45)
 #define NUM_SECONDS (5)
 #define NUM_RESOLUTIONS (5)
 #define NUM_TRANSFORMS (3)
 #define HRES (80)
 #define VRES (60)
 
-#define ADD_MILLISECONDS milliseconds += float(diff.tv_nsec) / 1000000
-#define DISPLAY_AVG_MILLISECONDS LOG_MED("Avg milliseconds: %f", milliseconds / (NUM_FRAMES))
+#define ADD_MILLISECONDS if (frames > 1) milliseconds += float(diff.tv_nsec) / 1000000
+#define ADD_JITTER if (frames > 1) jitter += (float(diff.tv_nsec) / 1000000) - PERIOD
+#define DISPLAY_AVG_MILLISECONDS LOG_MED("Avg milliseconds: %f", milliseconds / (frames - 1))
+#define DISPLAY_AVG_JITTER LOG_MED("Avg jitter in milliseconds: %f", jitter / (frames - 1))
 #define DISPLAY_STATS LOG_MED("Frames: %d, milliseconds: %f", frames - 1, milliseconds)
 #define DISPLAY_TIMESTAMP LOG_LOW("sec: %d, millisec: %f", diff.tv_sec, float(diff.tv_nsec)/1000000)
 #define DISPLAY_ABORT LOG_MED("Aborting test");
@@ -61,11 +64,11 @@ typedef struct res {
 
 // Array of resolutions
 res_t resolutions[NUM_RESOLUTIONS] = {
-  {.hres = 1280, .vres = 960},
   {.hres = 640,  .vres = 480},
+  {.hres = 640,  .vres = 400},
+  {.hres = 352,  .vres = 288},
   {.hres = 320,  .vres = 240},
   {.hres = 160,  .vres = 120},
-  {.hres = 80,   .vres = 60 },
 };
 
 // Capture structure to pass into pthread
@@ -83,6 +86,7 @@ void * hough_int(void * param)
   FUNC_ENTRY;
   int32_t frames = 0;
   float milliseconds = 0;
+  float jitter = 0;
   uint8_t timer = profiler_init();
   struct timespec diff;
   cap_t * capture = (cap_t *)param;
@@ -121,6 +125,8 @@ void * hough_int(void * param)
     // Add milliseconds
     ADD_MILLISECONDS;
 
+    ADD_JITTER;
+
     // Print the timestamp for the frame
     DISPLAY_TIMESTAMP;
   }
@@ -129,6 +135,7 @@ void * hough_int(void * param)
   DISPLAY_ABORT;
   DISPLAY_STATS;
   DISPLAY_AVG_MILLISECONDS;
+  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_int
 
@@ -141,6 +148,7 @@ void * hough_ellip(void * param)
   vector<Vec3f> circles;
   int32_t frames = 0;
   float milliseconds = 0;
+  float jitter = 0;
   uint8_t timer = profiler_init();
 
   // Loop capturing frames and displaying
@@ -175,6 +183,9 @@ void * hough_ellip(void * param)
     // Add milliseconds
     ADD_MILLISECONDS;
 
+    // Add milliseconds
+    ADD_JITTER;
+
     // Print the timestamp for the frame
     DISPLAY_TIMESTAMP;
   }
@@ -183,6 +194,7 @@ void * hough_ellip(void * param)
   DISPLAY_ABORT;
   DISPLAY_STATS;
   DISPLAY_AVG_MILLISECONDS;
+  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_ellip
 
@@ -198,6 +210,7 @@ void * canny_int(void * param)
   int ratio = 3;
   int32_t frames = 0;
   float milliseconds = 0;
+  float jitter = 0;
   uint8_t timer = profiler_init();
 
   // Loop capturing frames and displaying
@@ -230,6 +243,9 @@ void * canny_int(void * param)
     // Add milliseconds
     ADD_MILLISECONDS;
 
+    // Add jitter
+    ADD_JITTER;
+
     // Print the timestamp for the frame
     DISPLAY_TIMESTAMP;
   }
@@ -238,6 +254,7 @@ void * canny_int(void * param)
   DISPLAY_ABORT;
   DISPLAY_STATS;
   DISPLAY_AVG_MILLISECONDS;
+  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_ellip
 
@@ -343,7 +360,7 @@ int ex4prob5()
         sem_post(capture.timing_sem);
 
         // Sleep and set abort test
-        usleep(MICROSECONDS_PER_MILLISECOND * 45);
+        usleep(MICROSECONDS_PER_MILLISECOND * PERIOD);
       }
       abort_test = 1;
 
