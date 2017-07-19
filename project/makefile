@@ -180,6 +180,12 @@ alli :
 	$(MAKE) $(patsubst %.c,%.i,$(SRC_LIST))
 
 # Builds .o file when a .c file is specified by command line
+app/out/linux-arm/exercise4problem5.o: app/src/exercise4problem5.cpp
+	$(BUILD_TARGET)
+	$(BUILD_WITH)
+	$(CC) $(CFLAGS) -c -o "$@" "$<"
+
+# Builds .o file when a .c file is specified by command line
 app/out/linux-x86/exercise4problem5.o: app/src/exercise4problem5.cpp
 	$(BUILD_TARGET)
 	$(BUILD_WITH)

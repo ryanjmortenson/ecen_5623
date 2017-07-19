@@ -33,26 +33,23 @@ using namespace cv;
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (25)
-#define PERIOD (45)
+#define NUM_FRAMES (100)
+#define PERIOD (100)
 #define NUM_SECONDS (5)
 #define NUM_RESOLUTIONS (5)
 #define NUM_TRANSFORMS (3)
-#define HRES (80)
-#define VRES (60)
+#define WARM_UP_FRAMES (40)
 
-#define ADD_MILLISECONDS if (frames > 1) milliseconds += float(diff.tv_nsec) / 1000000
-#define ADD_JITTER if (frames > 1) jitter += (float(diff.tv_nsec) / 1000000) - PERIOD
-#define DISPLAY_AVG_MILLISECONDS LOG_MED("Avg milliseconds: %f", milliseconds / (frames - 1))
-#define DISPLAY_AVG_JITTER LOG_MED("Avg jitter in milliseconds: %f", jitter / (frames - 1))
-#define DISPLAY_STATS LOG_MED("Frames: %d, milliseconds: %f", frames - 1, milliseconds)
+#define TIMING_BUFFER (50)
+#define ADD_MILLISECONDS if (frames > 0) milliseconds += float(diff.tv_nsec) / 1000000
+#define ADD_JITTER if (frames > 0) jitter += (float(diff.tv_nsec - TIMING_BUFFER) / 1000000) - PERIOD
+#define DISPLAY_AVG_MILLISECONDS LOG_MED("Avg milliseconds: %f", milliseconds / (NUM_FRAMES - 1))
+#define DISPLAY_AVG_JITTER LOG_MED("Avg jitter in milliseconds: %f", jitter / (NUM_FRAMES - 1))
 #define DISPLAY_TIMESTAMP LOG_LOW("sec: %d, millisec: %f", diff.tv_sec, float(diff.tv_nsec)/1000000)
-#define DISPLAY_ABORT LOG_MED("Aborting test");
-#define START_CAPTURE start_timer(timer); \
-                      EQ_RET_E(capture->frame, cvQueryFrame(capture->capture), NULL, NULL);
+#define START_TIME start_timer(timer)
+#define START_CAPTURE EQ_RET_E(capture->frame, cvQueryFrame(capture->capture), NULL, NULL);
 #define DISPLAY_FRAME cvShowImage(WINDOWNAME, capture->frame); \
-                      cvWaitKey(1); \
-                      frames++;
+                      cvWaitKey(1);
 #define GET_TIME stop_timer(timer); \
                  get_time(timer, &diff);
 
@@ -75,7 +72,8 @@ res_t resolutions[NUM_RESOLUTIONS] = {
 typedef struct cap {
   CvCapture * capture;
   IplImage * frame;
-  sem_t * timing_sem;
+  sem_t * start;
+  sem_t * stop;
 } cap_t;
 
 // Flag for killing thread
@@ -84,11 +82,6 @@ uint32_t abort_test = 0;
 void * hough_int(void * param)
 {
   FUNC_ENTRY;
-  int32_t frames = 0;
-  float milliseconds = 0;
-  float jitter = 0;
-  uint8_t timer = profiler_init();
-  struct timespec diff;
   cap_t * capture = (cap_t *)param;
 
   Mat gray, canny_frame, cdst;
@@ -97,8 +90,13 @@ void * hough_int(void * param)
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    // Wait for start signal
+    sem_wait(capture->start);
+
+    // Capture the frame
     START_CAPTURE;
 
+    // Execute transform
     Mat mat_frame(capture->frame);
     Canny(mat_frame, canny_frame, 50, 200, 3);
 
@@ -112,50 +110,33 @@ void * hough_int(void * param)
       Vec4i l = lines[i];
       line(mat_frame, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,255), 3, CV_AA);
     }
-
     // Display the frame
     DISPLAY_FRAME;
 
-    // Wait for timer to post semaphore
-    sem_wait(capture->timing_sem);
-
-    // Stop the timer and get the different
-    GET_TIME;
-
-    // Add milliseconds
-    ADD_MILLISECONDS;
-
-    ADD_JITTER;
-
-    // Print the timestamp for the frame
-    DISPLAY_TIMESTAMP;
+    // Post done
+    sem_post(capture->stop);
   }
 
-  // Display abort and FPS
-  DISPLAY_ABORT;
-  DISPLAY_STATS;
-  DISPLAY_AVG_MILLISECONDS;
-  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_int
 
 void * hough_ellip(void * param)
 {
   FUNC_ENTRY;
-  struct timespec diff;
   cap_t * capture = (cap_t *)param;
   Mat gray, canny_frame, cdst;
   vector<Vec3f> circles;
-  int32_t frames = 0;
-  float milliseconds = 0;
-  float jitter = 0;
-  uint8_t timer = profiler_init();
 
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    // Wait for start signal
+    sem_wait(capture->start);
+
+    // Capture frame
     START_CAPTURE;
 
+    // Do Transform
     Mat mat_frame(capture->frame);
     cvtColor(mat_frame, gray, CV_BGR2GRAY);
     GaussianBlur(gray, gray, Size(9,9), 2, 2);
@@ -174,48 +155,30 @@ void * hough_ellip(void * param)
     // Display the frame
     DISPLAY_FRAME;
 
-    // Wait for timer to post semaphore
-    sem_wait(capture->timing_sem);
-
-    // Stop the timer and get the different
-    GET_TIME;
-
-    // Add milliseconds
-    ADD_MILLISECONDS;
-
-    // Add milliseconds
-    ADD_JITTER;
-
-    // Print the timestamp for the frame
-    DISPLAY_TIMESTAMP;
+    // Post done
+    sem_post(capture->stop);
   }
 
-  // Display abort and FPS
-  DISPLAY_ABORT;
-  DISPLAY_STATS;
-  DISPLAY_AVG_MILLISECONDS;
-  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_ellip
 
 void * canny_int(void * param)
 {
   FUNC_ENTRY;
-  struct timespec diff;
   cap_t * capture = (cap_t *)param;
   Mat canny_frame, cdst, timg_gray, timg_grad;
   vector<Vec3f> circles;
   int lowThreshold=0;
   int kernel_size = 3;
   int ratio = 3;
-  int32_t frames = 0;
-  float milliseconds = 0;
-  float jitter = 0;
-  uint8_t timer = profiler_init();
 
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    // Wait for start signal
+    sem_wait(capture->start);
+
+    // Capture Frame
     START_CAPTURE;
 
     Mat mat_frame(capture->frame);
@@ -234,27 +197,10 @@ void * canny_int(void * param)
     // Display the frame
     DISPLAY_FRAME;
 
-    // Wait for timer to post semaphore
-    sem_wait(capture->timing_sem);
-
-    // Stop the timer and get the different
-    GET_TIME;
-
-    // Add milliseconds
-    ADD_MILLISECONDS;
-
-    // Add jitter
-    ADD_JITTER;
-
-    // Print the timestamp for the frame
-    DISPLAY_TIMESTAMP;
+    // Post done
+    sem_post(capture->stop);
   }
 
-  // Display abort and FPS
-  DISPLAY_ABORT;
-  DISPLAY_STATS;
-  DISPLAY_AVG_MILLISECONDS;
-  DISPLAY_AVG_JITTER;
   return NULL;
 } // hough_ellip
 
@@ -273,7 +219,11 @@ int ex4prob5()
   int32_t test_policy = 0;
   int32_t res = 0;
   int32_t rt_max_pri = 0;
+  float milliseconds = 0.0f;
+  float jitter = 0.0f;
+  uint8_t timer = profiler_init();
   cap_t capture;
+  struct timespec diff;
 
   // Pthreads and pthread attributes
   pthread_t trans_thread;
@@ -287,8 +237,10 @@ int ex4prob5()
   };
 
   // Semaphore for timing
-  sem_t timing_sem;
-  PT_NOT_EQ_EXIT(res, sem_init(&timing_sem, 0, 0), SUCCESS);
+  sem_t start;
+  sem_t stop;
+  PT_NOT_EQ_EXIT(res, sem_init(&start, 0, 0), SUCCESS);
+  PT_NOT_EQ_EXIT(res, sem_init(&stop, 0, 0), SUCCESS);
 
   // Create a capture object and set values
   EQ_EXIT_E(capture.capture, (CvCapture *)cvCreateCameraCapture(DEVICE_NUMBER), NULL);
@@ -335,9 +287,10 @@ int ex4prob5()
       LOG_HIGH("Setting resolution to %dx%d", resolution.hres, resolution.vres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_WIDTH, resolution.hres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_HEIGHT, resolution.vres);
-      capture.timing_sem = &timing_sem;
+      capture.start = &start;
+      capture.stop = &stop;
 
-      // Creaet pthread
+      // Create pthread
       PT_NOT_EQ_EXIT(res,
                      pthread_create(&trans_thread, &sched_attr, cur_function, (void *)&capture),
                      SUCCESS);
@@ -350,22 +303,54 @@ int ex4prob5()
                test_policy,
                test_sched.sched_priority);
 
-      // Sleep to allow thread to get warmed up
-      usleep(MICROSECONDS_PER_SECOND);
+    
 
-      // Loop with 10 millesec timer
-      for (uint32_t k = 0; k < NUM_FRAMES; k++)
+      // Loop captures frames to allow camera to warm up 
+      LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
+      for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
+      {
+        sem_post(capture.start);
+        sem_wait(capture.stop);
+      }
+
+      // Loop captures frames to get stats
+      for (uint32_t frames = 0; frames < NUM_FRAMES; frames++)
       {
         // Post semaphore for capture
-        sem_post(capture.timing_sem);
+        sem_post(capture.start);
 
-        // Sleep and set abort test
-        usleep(MICROSECONDS_PER_MILLISECOND * PERIOD);
+        // Start the timer
+        START_TIME;
+
+        // Sleep for the period of a frame
+        usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
+
+        // Wait for frame to be captured
+        sem_wait(capture.stop);
+
+        // Get the time
+        GET_TIME;
+
+        // Add up milliseconds and jitter to find and average
+        ADD_MILLISECONDS;
+        ADD_JITTER;
+
+        // Display the time
+        DISPLAY_TIMESTAMP;
       }
-      abort_test = 1;
 
-      // Post semaphore for capture
-      sem_post(capture.timing_sem);
+      DISPLAY_AVG_MILLISECONDS;
+      DISPLAY_AVG_JITTER;
+
+      // Reset counters
+      milliseconds = 0;
+      jitter = 0;
+
+      // Set the abort flag then allow the thread to exit
+      sem_post(capture.start);
+      abort_test = 1;
+      sem_post(capture.stop);
+        
 
       // Wait for test thread to join
       PT_NOT_EQ_EXIT(res,
