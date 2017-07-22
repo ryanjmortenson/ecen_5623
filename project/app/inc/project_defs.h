@@ -12,6 +12,8 @@ typedef enum status {
   FAILURE
 } status_t;
 
+// Null pointer check
+#define CHECK_NULL(x) if (x == NULL) { return FAILURE; }
 
 // Check value not equal, print errno, and exit
 #define NOT_EQ_EXIT_E(res, func, val)                           \

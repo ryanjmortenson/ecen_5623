@@ -18,7 +18,7 @@ APP_SRC_C += \
 	$(APP_SRC_DIR)/server.c
 
 APP_SRC_CPP += \
-	$(APP_SRC_DIR)/exercise4problem5.cpp
+	$(APP_SRC_DIR)/capture.cpp
 
 TEST_SRC+= \
 	$(NON_MAIN_SRC) \
@@ -30,14 +30,10 @@ SRC_LIST = $(subst $(APP_SRC_DIR)/,,$(APP_SRC_CPP))
 # Build a list objects for each platform
 X86_OBJS = $(subst src,out/$(X86),$(patsubst %.c,%.o,$(APP_SRC_C)))
 ARM_OBJS = $(subst src,out/$(ARM),$(patsubst %.c,%.o,$(APP_SRC_C)))
-X86_TEST_OBJS = $(subst src,out/$(X86),$(patsubst %.c,%.o,$(TEST_SRC)))
-ARM_TEST_OBJS = $(subst src,out/$(ARM),$(patsubst %.c,%.o,$(TEST_SRC)))
 
 # Build a list objects for each platform
 X86_OBJS += $(subst src,out/$(X86),$(patsubst %.cpp,%.o,$(APP_SRC_CPP)))
 ARM_OBJS += $(subst src,out/$(ARM),$(patsubst %.cpp,%.o,$(APP_SRC_CPP)))
-X86_TEST_OBJS += $(subst src,out/$(X86),$(patsubst %.cpp,%.o,$(TEST_SRC)))
-ARM_TEST_OBJS += $(subst src,out/$(ARM),$(patsubst %.cpp,%.o,$(TEST_SRC)))
 
 # Build a list of .d files to clean
 APP_DEPS += $(patsubst %.o,%.d, $(OBJS) $(25Z_OBJS) $(ARM_OBJS))

@@ -56,9 +56,7 @@ LIB_OUT_FILE=lib$(EXERCISE_FILE)$(EXERCISE).a
 CFLAGS=-I$(APP_INC_DIR) \
        -Wall \
        -Werror \
-       -D _POSIX_C_SOURCE=199309L \
-       -D PROBLEM$(PROBLEM) \
-       -std=gnu++11
+       -D PROBLEM$(PROBLEM)
 
 # Set colored logs if specified
 ifneq ($(COLOR_LOGS),)
@@ -80,9 +78,9 @@ endif
 # Set a map flag to be added CFLAGS for certain targets
 MAP_FLAG=-Wl,-Map,"$@.map"
 
-# Set of 3 compilers use
-ARM_CC=arm-linux-gnueabihf-g++
-X86_CC=g++
+# Set of 2 compilers use
+ARM_CC=arm-linux-gnueabihf-gcc
+X86_CC=gcc
 
 # Set compiler, flags, and objects based on platform type
 ifeq ($(PLATFORM),tegra)
@@ -95,7 +93,7 @@ ifeq ($(PLATFORM),tegra)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else ifneq ($(findstring armv7,$(shell uname -a)),)
-	CC=g++
+	CC=gcc
 	CFLAGS+=-lrt \
           -D TEGRA \
           -I$(ARM_PROP_INC_DIR)
@@ -104,16 +102,16 @@ else ifneq ($(findstring armv7,$(shell uname -a)),)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else
-	CC=g++
+	CC=gcc
 	OBJS=$(X86_OBJS)
 	TEST_OBJS=$(X86_TEST_OBJS)
 	OUT_DIR=$(X86_APP_OUT)
 endif
 
 # Create names for size, ar, and objdump binaries
-SIZE=$(subst g++,size,$(CC))
-AR=$(subst g++,ar,$(CC))
-OBJDUMP=$(subst g++,objdump,$(CC))
+SIZE=$(subst gcc,size,$(CC))
+AR=$(subst gcc,ar,$(CC))
+OBJDUMP=$(subst gcc,objdump,$(CC))
 
 # If release isn't specfied build with debug symbols
 ifneq ($(TYPE),release)
@@ -179,14 +177,8 @@ alli :
 	@echo "Building all i files"
 	$(MAKE) $(patsubst %.c,%.i,$(SRC_LIST))
 
-# Builds .o file when a .c file is specified by command line
-app/out/linux-arm/exercise4problem5.o: app/src/exercise4problem5.cpp
-	$(BUILD_TARGET)
-	$(BUILD_WITH)
-	$(CC) $(CFLAGS) -c -o "$@" "$<"
-
-# Builds .o file when a .c file is specified by command line
-app/out/linux-x86/exercise4problem5.o: app/src/exercise4problem5.cpp
+# Builds .o file when a .cpp file is specified by command line
+%.o: $(APP_SRC_DIR)/%.cpp
 	$(BUILD_TARGET)
 	$(BUILD_WITH)
 	$(CC) $(CFLAGS) -c -o "$@" "$<"
@@ -223,15 +215,25 @@ $(OUT_DIR)/%.o: $(APP_SRC_DIR)/%.c
 	$(shell $(MK_DIR) $(OUT_DIR))
 	$(CC) $(CFLAGS) -c -o "$@" "$<"
 
+# Builds .o files from .cpp files
+$(OUT_DIR)/%.o: CFLAGS+=-MD -MP $(DEFINE) $(VERB)
+$(OUT_DIR)/%.o: $(APP_SRC_DIR)/%.cpp
+	$(BUILD_TARGET)
+	$(BUILD_WITH)
+	$(shell $(MK_DIR) $(OUT_DIR))
+	$(CC) $(CFLAGS) -c -o "$@" "$<"
+
 # List of items that need to be cleaned
 CLEAN+=$(OUT) \
        $(MAPS) \
        *.i \
        *.asm \
        *.o \
+       *.opp \
        exercise*.out \
        *.map \
        *.objdump \
+			 capture_* \
        $(UNIT_TEST_OUT) \
        $(LIB_OUT_FILE) \
        $(CMOCKA_LIB)

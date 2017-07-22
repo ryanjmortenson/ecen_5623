@@ -15,8 +15,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <time.h>
+#include <sys/utsname.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -26,32 +27,31 @@
 #include "profiler.h"
 #include "project_defs.h"
 
-using namespace std;
-using namespace cv;
-
-#define WINDOWNAME "Exercise4Problem5"
+#define WINDOWNAME "capture"
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
 #define NUM_FRAMES (100)
 #define PERIOD (100)
-#define NUM_SECONDS (5)
 #define NUM_RESOLUTIONS (5)
-#define NUM_TRANSFORMS (3)
+#define NUM_TRANSFORMS (1)
 #define WARM_UP_FRAMES (40)
+#define DIR_NAME_MAX (255)
+#define FILE_NAME_MAX DIR_NAME_MAX
+#define TIMESTAMP_MAX (30)
+#define FILE_PERM (S_IRWXU | S_IRWXO | S_IRWXG)
 
-#define TIMING_BUFFER (50)
-#define ADD_MILLISECONDS if (frames > 0) milliseconds += float(diff.tv_nsec) / 1000000
-#define ADD_JITTER if (frames > 0) jitter += (float(diff.tv_nsec - TIMING_BUFFER) / 1000000) - PERIOD
-#define DISPLAY_AVG_MILLISECONDS LOG_MED("Avg milliseconds: %f", milliseconds / (NUM_FRAMES - 1))
-#define DISPLAY_AVG_JITTER LOG_MED("Avg jitter in milliseconds: %f", jitter / (NUM_FRAMES - 1))
-#define DISPLAY_TIMESTAMP LOG_LOW("sec: %d, millisec: %f", diff.tv_sec, float(diff.tv_nsec)/1000000)
+#define TIMING_BUFFER (100)
+#define DISPLAY_TIMESTAMP LOG_LOW("sec: %d, millisec: %f", diff.tv_sec, (float)(diff.tv_nsec)/1000000)
 #define START_TIME start_timer(timer)
 #define START_CAPTURE EQ_RET_E(capture->frame, cvQueryFrame(capture->capture), NULL, NULL);
 #define DISPLAY_FRAME cvShowImage(WINDOWNAME, capture->frame); \
                       cvWaitKey(1);
 #define GET_TIME stop_timer(timer); \
                  get_time(timer, &diff);
+
+// Get a huge buffer in ram
+char image_buf[4301428];
 
 // Structure for resolutions
 typedef struct res {
@@ -74,171 +74,205 @@ typedef struct cap {
   IplImage * frame;
   sem_t * start;
   sem_t * stop;
+  res_t * res;
+  char * dir_name;
 } cap_t;
 
 // Flag for killing thread
 uint32_t abort_test = 0;
 
+// Structure to overlay blue green
+typedef struct colors {
+  uint8_t blue;
+  uint8_t green;
+  uint8_t red;
+} __attribute__((packed)) colors_t ;
+
+static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec * time)
+{
+  FUNC_ENTRY;
+  CHECK_NULL(data);
+
+  struct utsname info;
+  const char * header = "P3\n640 480\n255\n# Timestamp: ";
+  const char * rgb_fmt = "%d %d %d ";
+  char timestamp[TIMESTAMP_MAX];
+  char uname_string[256];
+  char rgb[256];
+  uint32_t res = 0;
+  uint32_t count = 0;
+
+  // Write the header
+  EQ_RET_E(res, write(fd, (void *) header, strlen(header)), -1, FAILURE);
+
+  // Create and write the timestamp
+  res = snprintf(timestamp, TIMESTAMP_MAX, "%d.%d\n", (uint32_t) time->tv_sec, (uint32_t) time->tv_nsec);
+  EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
+
+  // Create and write the uname info
+  EQ_RET_E(res, uname(&info), -1, FAILURE);
+  res = snprintf(uname_string,
+                 256,
+                 "# uname: %s %s %s %s %s\n",
+                 info.sysname,
+                 info.nodename,
+                 info.release,
+                 info.version,
+                 info.machine);
+  EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+
+  // Write the image buffer with proper info
+  for (uint32_t vres = 0; vres < 480; vres++)
+  {
+    for (uint32_t hres = 0; hres < 640; hres++)
+    {
+      res = snprintf(rgb, 256, rgb_fmt, data->red, data->green, data->blue);
+      data++;
+      strncat(image_buf + count, rgb, 4301428 - count);
+      count += res;
+    }
+    strncat(image_buf + count, "\n", 4301428 - count);
+    count += 1;
+  }
+
+  // Write the image
+  EQ_RET_E(res, write(fd, (void *) image_buf, count), -1, FAILURE);
+
+  // Set first element in image_buf to zero
+  image_buf[0] = 0;
+
+  // Write a 0 to image start so on the next call image
+  return SUCCESS;
+}
+
 void * hough_int(void * param)
 {
   FUNC_ENTRY;
-  cap_t * capture = (cap_t *)param;
 
-  Mat gray, canny_frame, cdst;
-  vector<Vec4i> lines;
+  struct timespec time;
+  cap_t * capture = (cap_t *)param;
+  uint32_t count = 0;
+  uint32_t fd = 0;
+  uint32_t res = 0;
+  char file_name[FILE_NAME_MAX];
+
+  // Check for null pointer
+  if (NULL == param)
+  {
+    LOG_ERROR("param parameter was NULL");
+    return NULL;
+  }
 
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    // Create the file name to save data
+    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", capture->dir_name, count);
+    LOG_LOW("Using %s as file name for frame %d", file_name, count);
+
+    // Open file to store contents
+    EQ_RET_E(fd, open(file_name, O_CREAT | O_WRONLY, FILE_PERM), -1, NULL);
+
     // Wait for start signal
     sem_wait(capture->start);
 
     // Capture the frame
     START_CAPTURE;
 
-    // Execute transform
-    Mat mat_frame(capture->frame);
-    Canny(mat_frame, canny_frame, 50, 200, 3);
+    // Get the time
+    clock_gettime(CLOCK_REALTIME, &time);
 
-    cvtColor(canny_frame, cdst, CV_GRAY2BGR);
-    cvtColor(mat_frame, gray, CV_BGR2GRAY);
+    // Write data to file
+    NOT_EQ_RET_E(res, write_ppm(fd, (colors_t *) capture->frame->imageData, &time), SUCCESS, NULL);
 
-    HoughLinesP(canny_frame, lines, 1, CV_PI/180, 50, 50, 10);
+#if 0
+    colors_t * test;
+    // Cast as a colors structure
+    test = (colors_t*) capture->frame->imageData;
 
-    for( size_t i = 0; i < lines.size(); i++ )
+    for (uint32_t i = 0; i < capture->res->hres * capture->res->vres; i++)
     {
-      Vec4i l = lines[i];
-      line(mat_frame, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,255), 3, CV_AA);
+      LOG_FATAL("r: %d, g: %d, b: %d", test->red, test->green, test->blue);
+      test++;
     }
+#endif
+
+    // Close file properly
+    EQ_RET_E(res, close(fd), -1, NULL);
+
     // Display the frame
     DISPLAY_FRAME;
 
     // Post done
     sem_post(capture->stop);
+    count++;
   }
 
   return NULL;
 } // hough_int
 
-void * hough_ellip(void * param)
+uint32_t create_dir(char * dir_name, uint8_t length)
 {
-  FUNC_ENTRY;
-  cap_t * capture = (cap_t *)param;
-  Mat gray, canny_frame, cdst;
-  vector<Vec3f> circles;
+  struct timespec dir_time;
+  struct stat st = {0};
+  uint32_t res = 0;
+  const char * capture = "capture";
 
-  // Loop capturing frames and displaying
-  while(!abort_test)
-  {
-    // Wait for start signal
-    sem_wait(capture->start);
+  // Check for null pointer
+  CHECK_NULL(dir_name);
 
-    // Capture frame
-    START_CAPTURE;
+  // Get the system time to append to directory to be created
+  clock_gettime(CLOCK_REALTIME, &dir_time);
 
-    // Do Transform
-    Mat mat_frame(capture->frame);
-    cvtColor(mat_frame, gray, CV_BGR2GRAY);
-    GaussianBlur(gray, gray, Size(9,9), 2, 2);
+  // Get the seconds to create a directory to store captured images
+  snprintf(dir_name, length, "%s_%d", capture, (uint32_t) dir_time.tv_sec);
 
-    HoughCircles(gray, circles, CV_HOUGH_GRADIENT, 1, gray.rows/8, 100, 50, 0, 0);
+  // Log the newly create directory name
+  LOG_LOW("Trying to create directory name: %s", dir_name);
 
-    for( size_t i = 0; i < circles.size(); i++ )
-    {
-      Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
-      int radius = cvRound(circles[i][2]);
-      // circle center
-      circle( mat_frame, center, 3, Scalar(0,255,0), -1, 8, 0 );
-      // circle outline
-      circle( mat_frame, center, radius, Scalar(0,0,255), 3, 8, 0 );
-    }
-    // Display the frame
-    DISPLAY_FRAME;
+  // Stat to make sure it doesn't exist
+  NOT_EQ_RET_E(res, stat(dir_name, &st), -1, FAILURE);
 
-    // Post done
-    sem_post(capture->stop);
-  }
+  // Try to create directory now
+  NOT_EQ_RET_E(res, mkdir(dir_name, FILE_PERM), SUCCESS, FAILURE);
 
-  return NULL;
-} // hough_ellip
+  return SUCCESS;
+}
 
-void * canny_int(void * param)
+int capture()
 {
-  FUNC_ENTRY;
-  cap_t * capture = (cap_t *)param;
-  Mat canny_frame, cdst, timg_gray, timg_grad;
-  vector<Vec3f> circles;
-  int lowThreshold=0;
-  int kernel_size = 3;
-  int ratio = 3;
+  struct sched_param  sched;
+  struct sched_param  test_sched;
+  struct timespec diff;
+  pthread_t trans_thread;
+  pthread_attr_t sched_attr;
+  sem_t start;
+  sem_t stop;
+  cap_t capture;
+  int32_t test_policy = 0;
+  int32_t res = 0;
+  int32_t rt_max_pri = 0;
+  uint8_t timer = profiler_init();
+  char dir_name[DIR_NAME_MAX];
 
-  // Loop capturing frames and displaying
-  while(!abort_test)
-  {
-    // Wait for start signal
-    sem_wait(capture->start);
-
-    // Capture Frame
-    START_CAPTURE;
-
-    Mat mat_frame(capture->frame);
-    cvtColor(mat_frame, timg_gray, CV_RGB2GRAY);
-
-    /// Reduce noise with a kernel 3x3
-    blur( timg_gray, canny_frame, Size(3,3) );
-
-    /// Canny detector
-    Canny( canny_frame, canny_frame, lowThreshold, lowThreshold*ratio, kernel_size );
-
-    /// Using Canny's output as a mask, we display our result
-    timg_grad = Scalar::all(0);
-    mat_frame.copyTo( timg_grad, canny_frame);
-
-    // Display the frame
-    DISPLAY_FRAME;
-
-    // Post done
-    sem_post(capture->stop);
-  }
-
-  return NULL;
-} // hough_ellip
-
-
-int ex4prob5()
-{
-  FUNC_ENTRY;
+  // Initialize log
   log_init();
+
+  // Print function entry
+  FUNC_ENTRY;
 
   // Create a window
   cvNamedWindow(WINDOWNAME, CV_WINDOW_AUTOSIZE);
 
-  // Scheduling parameters
-  struct sched_param  sched;
-  struct sched_param  test_sched;
-  int32_t test_policy = 0;
-  int32_t res = 0;
-  int32_t rt_max_pri = 0;
-  float milliseconds = 0.0f;
-  float jitter = 0.0f;
-  uint8_t timer = profiler_init();
-  cap_t capture;
-  struct timespec diff;
-
-  // Pthreads and pthread attributes
-  pthread_t trans_thread;
-  pthread_attr_t sched_attr;
-
   // Create an array of function pointers
   void * (*transforms[NUM_TRANSFORMS])(void *) = {
     hough_int,
-    hough_ellip,
-    canny_int
   };
 
+  // Create a new directoty
+  NOT_EQ_EXIT_E(res, create_dir(dir_name, DIR_NAME_MAX), SUCCESS);
+
   // Semaphore for timing
-  sem_t start;
-  sem_t stop;
   PT_NOT_EQ_EXIT(res, sem_init(&start, 0, 0), SUCCESS);
   PT_NOT_EQ_EXIT(res, sem_init(&stop, 0, 0), SUCCESS);
 
@@ -287,8 +321,10 @@ int ex4prob5()
       LOG_HIGH("Setting resolution to %dx%d", resolution.hres, resolution.vres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_WIDTH, resolution.hres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_HEIGHT, resolution.vres);
+      capture.dir_name = dir_name;
       capture.start = &start;
       capture.stop = &stop;
+      capture.res = &resolution;
 
       // Create pthread
       PT_NOT_EQ_EXIT(res,
@@ -303,9 +339,7 @@ int ex4prob5()
                test_policy,
                test_sched.sched_priority);
 
-    
-
-      // Loop captures frames to allow camera to warm up 
+      // Loop captures frames to allow camera to warm up
       LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
       for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
       {
@@ -331,26 +365,15 @@ int ex4prob5()
         // Get the time
         GET_TIME;
 
-        // Add up milliseconds and jitter to find and average
-        ADD_MILLISECONDS;
-        ADD_JITTER;
-
         // Display the time
         DISPLAY_TIMESTAMP;
       }
-
-      DISPLAY_AVG_MILLISECONDS;
-      DISPLAY_AVG_JITTER;
-
-      // Reset counters
-      milliseconds = 0;
-      jitter = 0;
 
       // Set the abort flag then allow the thread to exit
       sem_post(capture.start);
       abort_test = 1;
       sem_post(capture.stop);
-        
+
 
       // Wait for test thread to join
       PT_NOT_EQ_EXIT(res,
