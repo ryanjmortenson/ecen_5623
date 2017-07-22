@@ -4,22 +4,16 @@
 *
 */
 
-#include <exercise3.h>
+#include <stdint.h>
+#include <exercise4.h>
 
 int main()
 {
 
-#ifdef PROBLEM2
-  ex3prob2();
-#endif
-
-#ifdef PROBLEM4
-  ex3prob4();
-#endif
-
+  uint32_t res = 0;
 #ifdef PROBLEM5
-  ex3prob5();
+  res = ex4prob5();
 #endif
 
-  return 0;
+  return res;
 }

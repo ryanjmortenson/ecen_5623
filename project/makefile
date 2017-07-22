@@ -37,13 +37,13 @@ MAPS=$(X86_OUT_DIR)/$(MAP_FILE) \
 
 # Set define of project 2 as default
 ifeq ($(EXERCISE),)
-	EXERCISE=2
+	EXERCISE=4
 else
 	EXERCISE=$(EXERCISE)
 endif
 
 ifeq ($(PROBLEM),)
-	PROBLEM=2
+	PROBLEM=5
 else
 	PROBLEM=$(PROBLEM)
 endif
@@ -57,8 +57,8 @@ CFLAGS=-I$(APP_INC_DIR) \
        -Wall \
        -Werror \
        -D _POSIX_C_SOURCE=199309L \
-       -D PROBLEM$(PROBLEM)\
-       -std=c99
+       -D PROBLEM$(PROBLEM) \
+       -std=gnu++11
 
 # Set colored logs if specified
 ifneq ($(COLOR_LOGS),)
@@ -81,8 +81,8 @@ endif
 MAP_FLAG=-Wl,-Map,"$@.map"
 
 # Set of 3 compilers use
-ARM_CC=arm-linux-gnueabihf-gcc
-X86_CC=x86_64-linux-gnu-gcc
+ARM_CC=arm-linux-gnueabihf-g++
+X86_CC=g++
 
 # Set compiler, flags, and objects based on platform type
 ifeq ($(PLATFORM),tegra)
@@ -95,7 +95,7 @@ ifeq ($(PLATFORM),tegra)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else ifneq ($(findstring armv7,$(shell uname -a)),)
-	CC=gcc
+	CC=g++
 	CFLAGS+=-lrt \
           -D TEGRA \
           -I$(ARM_PROP_INC_DIR)
@@ -104,16 +104,16 @@ else ifneq ($(findstring armv7,$(shell uname -a)),)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else
-	CC=gcc
+	CC=g++
 	OBJS=$(X86_OBJS)
 	TEST_OBJS=$(X86_TEST_OBJS)
 	OUT_DIR=$(X86_APP_OUT)
 endif
 
 # Create names for size, ar, and objdump binaries
-SIZE=$(subst gcc,size,$(CC))
-AR=$(subst gcc,ar,$(CC))
-OBJDUMP=$(subst gcc,objdump,$(CC))
+SIZE=$(subst g++,size,$(CC))
+AR=$(subst g++,ar,$(CC))
+OBJDUMP=$(subst g++,objdump,$(CC))
 
 # If release isn't specfied build with debug symbols
 ifneq ($(TYPE),release)
@@ -140,16 +140,13 @@ build-lib: $(OBJS)
 # Debug target is just used for debugging the make file
 debug:
 	@echo "Debug output"
-	@echo $(ARM_PROP_OBJS)
-	@echo $(ARM_PROP_SRCS)
-	@echo $(OUT_DIR)
-	@echo $(TEST_OBJS)
+	@echo $(X86_OBJS)
 
 # Compiles the project into project binary which can be executed with ./project*.out
 $(EXERCISE_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
 $(EXERCISE_OUT_FILE): $(OBJS)
 	$(BUILD_TARGET)
-	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lrt
+	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
 	$(SIZE) $@
 
 # Build the library file for static linking
@@ -181,6 +178,18 @@ allasm :
 alli :
 	@echo "Building all i files"
 	$(MAKE) $(patsubst %.c,%.i,$(SRC_LIST))
+
+# Builds .o file when a .c file is specified by command line
+app/out/linux-arm/exercise4problem5.o: app/src/exercise4problem5.cpp
+	$(BUILD_TARGET)
+	$(BUILD_WITH)
+	$(CC) $(CFLAGS) -c -o "$@" "$<"
+
+# Builds .o file when a .c file is specified by command line
+app/out/linux-x86/exercise4problem5.o: app/src/exercise4problem5.cpp
+	$(BUILD_TARGET)
+	$(BUILD_WITH)
+	$(CC) $(CFLAGS) -c -o "$@" "$<"
 
 # Builds .o file when a .c file is specified by command line
 %.o: $(APP_SRC_DIR)/%.c
