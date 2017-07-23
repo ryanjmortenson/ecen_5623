@@ -15,10 +15,7 @@
 #include "log.h"
 #include "project_defs.h"
 
-#define PORT (12345)
-#define ADDRESS "127.0.0.1"
-
-uint32_t client_socket_init(int32_t * sockfd)
+uint32_t client_socket_init(int32_t * sockfd, char * add, uint32_t port)
 {
   FUNC_ENTRY;
 
@@ -31,21 +28,23 @@ uint32_t client_socket_init(int32_t * sockfd)
 
   // Instantiate socket and get the host name for connection
   EQ_RET_E(*sockfd, socket(AF_INET, SOCK_STREAM, 0), -1, FAILURE);
-  EQ_RET_E(server, gethostbyname(ADDRESS), NULL, FAILURE);
+  EQ_RET_E(server, gethostbyname(add), NULL, FAILURE);
 
   // Set up the serv_addr structure for connection
   serv_addr.sin_family = AF_INET;
   memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-  serv_addr.sin_port = htons(PORT);
+  serv_addr.sin_port = htons(port);
 
   // Connect
+  LOG_HIGH("Trying connection to %s on port %d", add, port);
   EQ_RET_E(res,
            connect(*sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)),
            -1,
            FAILURE);
+  LOG_HIGH("Connection succesful");
 
   return SUCCESS;
-}
+} // client_socket_init()
 
 uint32_t client_socket_send(int32_t sockfd, void * data, uint32_t count)
 {
@@ -60,7 +59,7 @@ uint32_t client_socket_send(int32_t sockfd, void * data, uint32_t count)
   }
 
   return SUCCESS;
-}
+} // client_socket_send()
 
 uint32_t client_socket_destroy(int32_t sockfd)
 {
@@ -72,4 +71,4 @@ uint32_t client_socket_destroy(int32_t sockfd)
   EQ_RET_E(res, shutdown(sockfd, SHUT_RDWR), -1, FAILURE);
 
   return SUCCESS;
-}
+} // client_socket_destroy()

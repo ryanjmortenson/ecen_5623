@@ -31,14 +31,15 @@
 #define WARM_UP
 #define CLIENT_CONNECT
 
+#define PORT (12345)
+#define ADDRESS "127.0.0.1"
+
 #define WINDOWNAME "capture"
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (1)
+#define NUM_FRAMES (100)
 #define PERIOD (100)
-#define NUM_RESOLUTIONS (1)
-#define NUM_TRANSFORMS (1)
 #define WARM_UP_FRAMES (40)
 #define DIR_NAME_MAX (255)
 #define MAX_INTENSITY (255)
@@ -46,29 +47,25 @@
 #define TIMESTAMP_MAX (40)
 #define UNAME_MAX (256)
 #define FILE_PERM (S_IRWXU | S_IRWXO | S_IRWXG)
-
 #define TIMING_BUFFER (100)
+#define IMAGE_NUM_BYTES (640*480*3)
+
 #define DISPLAY_TIMESTAMP LOG_LOW("sec: %d, millisec: %f", diff.tv_sec, (float)(diff.tv_nsec)/1000000)
 #define START_TIME start_timer(timer)
-#define START_CAPTURE EQ_RET_E(capture->frame, cvQueryFrame(capture->capture), NULL, NULL);
-#define DISPLAY_FRAME cvShowImage(WINDOWNAME, capture->frame); \
-                      cvWaitKey(1);
+#define START_CAPTURE(cap) EQ_RET_E(cap->frame, cvQueryFrame(cap->capture), NULL, NULL);
+#define DISPLAY_FRAME(cap) cvShowImage(WINDOWNAME, cap->frame); \
+                           cvWaitKey(1);
 #define GET_TIME stop_timer(timer); \
                  get_time(timer, &diff);
 
 // Get a huge buffer in ram
-char image_buf[921600];
+static char image_buf[IMAGE_NUM_BYTES];
 
 // Structure for resolutions
 typedef struct res {
   uint32_t hres;
   uint32_t vres;
 } res_t;
-
-// Array of resolutions
-res_t resolutions[NUM_RESOLUTIONS] = {
-  {.hres = 640,  .vres = 480}
-};
 
 // Capture structure to pass into pthread
 typedef struct cap {
@@ -82,7 +79,7 @@ typedef struct cap {
 } cap_t;
 
 // Flag for killing thread
-uint32_t abort_test = 0;
+static uint32_t abort_test = 0;
 
 // Structure to overlay blue green
 typedef struct colors {
@@ -91,7 +88,14 @@ typedef struct colors {
   uint8_t red;
 } __attribute__((packed)) colors_t;
 
-static inline uint8_t gamma_tf(uint8_t color)
+
+/*!
+* @brief Applies gamma transfer function to color intensity
+* @param color color intensity
+* @return transformed result
+*/
+static inline
+uint8_t gamma_tf(uint8_t color)
 {
   float conversion = (float)color / 255.0f;
   if (conversion >= 0 && conversion < 0.0013f)
@@ -102,8 +106,16 @@ static inline uint8_t gamma_tf(uint8_t color)
   {
     return (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * MAX_INTENSITY);
   }
-}
+} // gamma_tf()
 
+/*!
+* @brief Writes ppm to file and socket
+* @param fd file descriptor to write ppm to
+* @param cap pointer to cap_t structure with image info
+* @param time pointer to timespec structure with current timestamp
+* @param uname_str pointer to string holding uname info
+* @return SUCCESS/FAILURE
+*/
 static inline
 uint32_t write_ppm(uint32_t fd, cap_t * cap, struct timespec * time, char * uname_str)
 {
@@ -169,15 +181,20 @@ uint32_t write_ppm(uint32_t fd, cap_t * cap, struct timespec * time, char * unam
 
   // Success
   return SUCCESS;
-}
+} // write_ppm()
 
-void * device_capture(void * param)
+/*!
+* @brief Spins off a thread to do capture
+* @param param void pointer to params
+* @return NULL
+*/
+void * cap_func(void * param)
 {
   FUNC_ENTRY;
 
   struct timespec time;
   struct utsname info;
-  cap_t * capture = (cap_t *)param;
+  cap_t * cap = (cap_t *)param;
   uint32_t count = 0;
   uint32_t fd = 0;
   uint32_t res = 0;
@@ -206,38 +223,44 @@ void * device_capture(void * param)
   while(!abort_test)
   {
     // Wait for start signal
-    sem_wait(capture->start);
+    sem_wait(cap->start);
 
     // Create the file name to save data
-    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", capture->dir_name, count);
+    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", cap->dir_name, count);
     LOG_LOW("Using %s as file name for frame %d", file_name, count);
 
     // Open file to store contents
     EQ_RET_E(fd, open(file_name, O_CREAT | O_WRONLY, FILE_PERM), -1, NULL);
 
     // Capture the frame
-    START_CAPTURE;
+    START_CAPTURE(cap);
 
     // Get the time
     clock_gettime(CLOCK_REALTIME, &time);
 
     // Write data to file
-    NOT_EQ_RET_E(res, write_ppm(fd, capture, &time, uname_str), SUCCESS, NULL);
+    NOT_EQ_RET_E(res, write_ppm(fd, cap, &time, uname_str), SUCCESS, NULL);
 
     // Close file properly
     EQ_RET_E(res, close(fd), -1, NULL);
 
     // Display the frame
-    DISPLAY_FRAME;
+    DISPLAY_FRAME(cap);
 
     // Post done
-    sem_post(capture->stop);
+    sem_post(cap->stop);
     count++;
   }
 
   return NULL;
-} // device_capture()
+} // cap_func()
 
+/*!
+* @brief Creates a new directory for new captures
+* @param dirname pointer to buffer holding first part of directory name
+* @param length length of buffer holding directory name
+* @return SUCCESS/FAILURE
+*/
 uint32_t create_dir(char * dir_name, uint8_t length)
 {
   struct timespec dir_time;
@@ -264,19 +287,20 @@ uint32_t create_dir(char * dir_name, uint8_t length)
   NOT_EQ_RET_E(res, mkdir(dir_name, FILE_PERM), SUCCESS, FAILURE);
 
   return SUCCESS;
-}
+} // create_dir()
 
 int capture()
 {
   struct sched_param  sched;
-  struct sched_param  test_sched;
+  struct sched_param  cap_sched;
   struct timespec diff;
   pthread_t cap_thread;
   pthread_attr_t sched_attr;
   sem_t start;
   sem_t stop;
-  cap_t capture;
-  int32_t test_policy = 0;
+  cap_t cap;
+  res_t resolution = {.hres = 640,  .vres = 480};
+  int32_t cap_policy = 0;
   int32_t res = 0;
   int32_t rt_max_pri = 0;
   uint8_t timer = profiler_init();
@@ -291,16 +315,11 @@ int capture()
 #ifdef CLIENT_CONNECT
   // Initialize client socket
   int32_t sockfd = 0;
-  NOT_EQ_RET_E(res, client_socket_init(&sockfd), SUCCESS, FAILURE);
+  NOT_EQ_RET_E(res, client_socket_init(&sockfd, ADDRESS, PORT), SUCCESS, FAILURE);
 #endif
 
   // Create a window
   cvNamedWindow(WINDOWNAME, CV_WINDOW_AUTOSIZE);
-
-  // Create an array of function pointers
-  void * (*transforms[NUM_TRANSFORMS])(void *) = {
-    device_capture,
-  };
 
 #if 0
   // Create a new directoty
@@ -312,7 +331,7 @@ int capture()
   PT_NOT_EQ_EXIT(res, sem_init(&stop, 0, 0), SUCCESS);
 
   // Create a capture object and set values
-  EQ_EXIT_E(capture.capture, (CvCapture *)cvCreateCameraCapture(DEVICE_NUMBER), NULL);
+  EQ_EXIT_E(cap.capture, (CvCapture *)cvCreateCameraCapture(DEVICE_NUMBER), NULL);
 
   // Initialize the shedule attributes
   PT_NOT_EQ_EXIT(res, pthread_attr_init(&sched_attr), SUCCESS);
@@ -340,89 +359,75 @@ int capture()
                  pthread_attr_setschedparam(&sched_attr, &sched),
                  SUCCESS);
 
-  // Loop over function pointers to transforms
-  for (uint8_t j = 0; j < NUM_TRANSFORMS; j++)
-  {
-    void * (*cur_func)(void *) = transforms[j];
+  // Set resolution
+  LOG_HIGH("Setting resolution to %dx%d", resolution.hres, resolution.vres);
+  cvSetCaptureProperty(cap.capture, CV_CAP_PROP_FRAME_WIDTH, resolution.hres);
+  cvSetCaptureProperty(cap.capture, CV_CAP_PROP_FRAME_HEIGHT, resolution.vres);
 
-    // Loop over resolutions
-    for (uint8_t i = 0; i < NUM_RESOLUTIONS; i++)
-    {
-      // Reset abort test
-      abort_test = 0;
+  // Fill out general data structure for capture thread
+  cap.dir_name = dir_name;
+  cap.sockfd = sockfd;
+  cap.start = &start;
+  cap.stop = &stop;
+  cap.res = &resolution;
 
-      // Set resolution
-      res_t resolution = resolutions[i];
-      LOG_HIGH("Setting resolution to %dx%d", resolution.hres, resolution.vres);
-      cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_WIDTH, resolution.hres);
-      cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_HEIGHT, resolution.vres);
+  // Create pthread
+  PT_NOT_EQ_EXIT(res,
+                 pthread_create(&cap_thread, &sched_attr, cap_func, (void *)&cap),
+                 SUCCESS);
 
-      // Fill out general data structure for capture thread
-      capture.dir_name = dir_name;
-      capture.sockfd = sockfd;
-      capture.start = &start;
-      capture.stop = &stop;
-      capture.res = &resolution;
-
-      // Create pthread
-      PT_NOT_EQ_EXIT(res,
-                     pthread_create(&cap_thread, &sched_attr, cur_func, (void *)&capture),
-                     SUCCESS);
-
-      // Get the scheduler parameters to display
-      PT_NOT_EQ_EXIT(res,
-                     pthread_getschedparam(cap_thread, &test_policy, &test_sched),
-                     SUCCESS);
-      LOG_HIGH("cap_thread policy: %d, priority: %d",
-               test_policy,
-               test_sched.sched_priority);
+  // Get the scheduler parameters to display
+  PT_NOT_EQ_EXIT(res,
+                 pthread_getschedparam(cap_thread, &cap_policy, &cap_sched),
+                 SUCCESS);
+  LOG_HIGH("cap_thread policy: %d, priority: %d",
+           cap_policy,
+           cap_sched.sched_priority);
 
 #ifdef WARM_UP
-      // Loop captures frames to allow camera to warm up
-      LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
-      for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
-      {
-        EQ_RET_E(capture.frame, cvQueryFrame(capture.capture), NULL, FAILURE);
-      }
+  // Loop captures frames to allow camera to warm up
+  LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
+  for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
+  {
+    EQ_RET_E(cap.frame, cvQueryFrame(cap.capture), NULL, FAILURE);
+  }
 #endif
 
-      // Loop captures frames to get stats
-      for (uint32_t frames = 0; frames < NUM_FRAMES; frames++)
-      {
-        // Post semaphore for capture
-        sem_post(capture.start);
+  // Loop captures frames to get stats
+  for (uint32_t frames = 0; frames < NUM_FRAMES; frames++)
+  {
+    // Post semaphore for capture
+    sem_post(cap.start);
 
-        // Start the timer
-        START_TIME;
+    // Start the timer
+    START_TIME;
 
-        // Sleep for the period of a frame
-        usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
+    // Sleep for the period of a frame
+    usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
 
-        // Wait for frame to be captured
-        sem_wait(capture.stop);
+    // Wait for frame to be captured
+    sem_wait(cap.stop);
 
-        // Get the time
-        GET_TIME;
+    // Get the time
+    GET_TIME;
 
-        // Display the time
-        DISPLAY_TIMESTAMP;
-      }
-
-      // Set the abort flag then allow the thread to exit
-      sem_post(capture.start);
-      abort_test = 1;
-      sem_post(capture.stop);
-
-      // Wait for test thread to join
-      PT_NOT_EQ_EXIT(res,
-                     pthread_join(cap_thread, NULL),
-                     SUCCESS);
-      LOG_HIGH("test thread joined");
-    }
+    // Display the time
+    DISPLAY_TIMESTAMP;
   }
 
+  // Set the abort flag then allow the thread to exit
+  sem_post(cap.start);
+  abort_test = 1;
+  sem_post(cap.stop);
+
+  // Wait for test thread to join
+  PT_NOT_EQ_EXIT(res,
+                 pthread_join(cap_thread, NULL),
+                 SUCCESS);
+  LOG_HIGH("test thread joined");
+
   // Destroy capture and window
-  cvReleaseCapture(&capture.capture);
+  cvReleaseCapture(&cap.capture);
   cvDestroyWindow(WINDOWNAME);
 
 #ifdef CLIENT_CONNECT
