@@ -51,7 +51,7 @@
                  get_time(timer, &diff);
 
 // Get a huge buffer in ram
-char image_buf[4301428];
+char image_buf[921600];
 
 // Structure for resolutions
 typedef struct res {
@@ -86,7 +86,22 @@ typedef struct colors {
   uint8_t blue;
   uint8_t green;
   uint8_t red;
-} __attribute__((packed)) colors_t ;
+} __attribute__((packed)) colors_t;
+
+static inline uint8_t gamma_tf(uint8_t color)
+{
+  float conversion = (float)color / 255.0f;
+  if (conversion >= 0 && conversion < 0.0013f)
+  {
+    uint8_t test = (uint8_t) ((float)(12.92f * conversion) * 255);
+    return test;
+  }
+  else
+  {
+    uint8_t test = (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * 255);
+    return test;
+  }
+}
 
 static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec * time)
 {
@@ -94,20 +109,18 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
   CHECK_NULL(data);
 
   struct utsname info;
-  const char * header = "P3\n640 480\n255\n# Timestamp: ";
-  const char * rgb_fmt = "%d %d %d ";
+  const char * header = "P6\n640 480\n255\n# Timestamp: ";
   char timestamp[TIMESTAMP_MAX];
   char uname_string[256];
-  char rgb[256];
-  uint32_t res = 0;
   uint32_t count = 0;
+  uint32_t res = 0;
 
   // Write the header
   EQ_RET_E(res, write(fd, (void *) header, strlen(header)), -1, FAILURE);
 
   // Create and write the timestamp
   res = snprintf(timestamp, TIMESTAMP_MAX, "%d.%d\n", (uint32_t) time->tv_sec, (uint32_t) time->tv_nsec);
-  EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
+  // EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
 
   // Create and write the uname info
   EQ_RET_E(res, uname(&info), -1, FAILURE);
@@ -119,24 +132,29 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
                  info.release,
                  info.version,
                  info.machine);
-  EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+  // EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
 
   // Write the image buffer with proper info
   for (uint32_t vres = 0; vres < 480; vres++)
   {
     for (uint32_t hres = 0; hres < 640; hres++)
     {
-      res = snprintf(rgb, 256, rgb_fmt, data->red, data->green, data->blue);
+#ifdef GAMMA_FUNCTION
+      image_buf[count]     = gamma_tf(data->green);
+      image_buf[count + 1] = gamma_tf(data->blue);
+      image_buf[count + 2] = gamma_tf(data->red);
+#else
+      image_buf[count]     = (data->green);
+      image_buf[count + 1] = (data->blue);
+      image_buf[count + 2] = (data->red);
+#endif
+      count += 3;
       data++;
-      strncat(image_buf + count, rgb, 4301428 - count);
-      count += res;
     }
-    strncat(image_buf + count, "\n", 4301428 - count);
-    count += 1;
   }
 
   // Write the image
-  EQ_RET_E(res, write(fd, (void *) image_buf, count), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (void *) image_buf, 640*480*3), -1, FAILURE);
 
   // Set first element in image_buf to zero
   image_buf[0] = 0;
@@ -185,18 +203,6 @@ void * hough_int(void * param)
     // Write data to file
     NOT_EQ_RET_E(res, write_ppm(fd, (colors_t *) capture->frame->imageData, &time), SUCCESS, NULL);
 
-#if 0
-    colors_t * test;
-    // Cast as a colors structure
-    test = (colors_t*) capture->frame->imageData;
-
-    for (uint32_t i = 0; i < capture->res->hres * capture->res->vres; i++)
-    {
-      LOG_FATAL("r: %d, g: %d, b: %d", test->red, test->green, test->blue);
-      test++;
-    }
-#endif
-
     // Close file properly
     EQ_RET_E(res, close(fd), -1, NULL);
 
@@ -225,7 +231,7 @@ uint32_t create_dir(char * dir_name, uint8_t length)
   clock_gettime(CLOCK_REALTIME, &dir_time);
 
   // Get the seconds to create a directory to store captured images
-  snprintf(dir_name, length, "%s_%d", capture, (uint32_t) dir_time.tv_sec);
+  snprintf(dir_name, length, "%s", capture);
 
   // Log the newly create directory name
   LOG_LOW("Trying to create directory name: %s", dir_name);
@@ -253,7 +259,7 @@ int capture()
   int32_t res = 0;
   int32_t rt_max_pri = 0;
   uint8_t timer = profiler_init();
-  char dir_name[DIR_NAME_MAX];
+  char dir_name[DIR_NAME_MAX] = "capture";
 
   // Initialize log
   log_init();
@@ -269,8 +275,10 @@ int capture()
     hough_int,
   };
 
+#if 0
   // Create a new directoty
   NOT_EQ_EXIT_E(res, create_dir(dir_name, DIR_NAME_MAX), SUCCESS);
+#endif
 
   // Semaphore for timing
   PT_NOT_EQ_EXIT(res, sem_init(&start, 0, 0), SUCCESS);

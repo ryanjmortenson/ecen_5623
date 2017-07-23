@@ -144,7 +144,7 @@ debug:
 $(EXERCISE_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
 $(EXERCISE_OUT_FILE): $(OBJS)
 	$(BUILD_TARGET)
-	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
+	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lm -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
 	$(SIZE) $@
 
 # Build the library file for static linking
