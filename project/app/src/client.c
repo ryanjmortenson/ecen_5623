@@ -61,14 +61,15 @@ uint32_t client_socket_send(int32_t sockfd, void * data, uint32_t count)
   return SUCCESS;
 } // client_socket_send()
 
-uint32_t client_socket_destroy(int32_t sockfd)
+uint32_t client_socket_dest(int32_t sockfd)
 {
   FUNC_ENTRY;
 
   int32_t res = 0;
 
   // Shutdown the socket
+  LOG_MED("Shutting down socket fd: %d", sockfd);
   EQ_RET_E(res, shutdown(sockfd, SHUT_RDWR), -1, FAILURE);
 
   return SUCCESS;
-} // client_socket_destroy()
+} // client_socket_dest()

@@ -20,7 +20,7 @@ uint32_t client_socket_init(int32_t * sockfd, char * add, uint32_t port);
 * @param sockfd socket to shutdown
 * @return SUCCESS/FAILURE
 */
-uint32_t client_socket_destroy(int32_t sockfd);
+uint32_t client_socket_dest(int32_t sockfd);
 
 /*!
 * @brief Send data from client socket
