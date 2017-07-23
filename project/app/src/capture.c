@@ -31,12 +31,13 @@
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (100)
+#define NUM_FRAMES (200)
 #define PERIOD (100)
-#define NUM_RESOLUTIONS (5)
+#define NUM_RESOLUTIONS (1)
 #define NUM_TRANSFORMS (1)
 #define WARM_UP_FRAMES (40)
 #define DIR_NAME_MAX (255)
+#define MAX_INTENSITY (255)
 #define FILE_NAME_MAX DIR_NAME_MAX
 #define TIMESTAMP_MAX (40)
 #define UNAME_MAX (256)
@@ -62,11 +63,7 @@ typedef struct res {
 
 // Array of resolutions
 res_t resolutions[NUM_RESOLUTIONS] = {
-  {.hres = 640,  .vres = 480},
-  {.hres = 640,  .vres = 400},
-  {.hres = 352,  .vres = 288},
-  {.hres = 320,  .vres = 240},
-  {.hres = 160,  .vres = 120},
+  {.hres = 640,  .vres = 480}
 };
 
 // Capture structure to pass into pthread
@@ -94,11 +91,11 @@ static inline uint8_t gamma_tf(uint8_t color)
   float conversion = (float)color / 255.0f;
   if (conversion >= 0 && conversion < 0.0013f)
   {
-    return (uint8_t) ((float)(12.92f * conversion) * 255);
+    return (uint8_t) ((float)(12.92f * conversion) * MAX_INTENSITY);
   }
   else
   {
-    return (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * 255);
+    return (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * MAX_INTENSITY);
   }
 }
 
@@ -121,12 +118,11 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
   // Create and write the timestamp
   res = snprintf(timestamp,
                  TIMESTAMP_MAX,
-                 "# Timestamp: %d.%d\n",
-                 (uint32_t) time->tv_sec,
-                 (uint32_t) time->tv_nsec);
+                 "# Timestamp: %f\n",
+                 (double) time->tv_sec + (double) time->tv_nsec / 1000000000);
   EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
 
-  // Create and write the uname info
+  // Create and write the uname info TODO: Construct once to cut down system calls
   EQ_RET_E(res, uname(&info), -1, FAILURE);
   res = snprintf(uname_string,
                  UNAME_MAX,
@@ -137,6 +133,8 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
                  info.version,
                  info.machine);
   EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+
+  // Write the max pixel intensity
   EQ_RET_E(res, write(fd, (void *) pixel_max, strlen(pixel_max)), -1, FAILURE);
 
   // Write the image buffer with proper info
@@ -145,10 +143,12 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
     for (uint32_t hres = 0; hres < 640; hres++)
     {
 #ifdef GAMMA_FUNCTION
+      // Do gamma function conversion which is specified by the NetPbm spec
       image_buf[count]     = gamma_tf(data->green);
       image_buf[count + 1] = gamma_tf(data->blue);
       image_buf[count + 2] = gamma_tf(data->red);
 #else
+      // Write the raw intensity
       image_buf[count]     = (data->red);
       image_buf[count + 1] = (data->green);
       image_buf[count + 2] = (data->blue);
@@ -164,7 +164,7 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
   // Set first element in image_buf to zero
   image_buf[0] = 0;
 
-  // Write a 0 to image start so on the next call image
+  // Success
   return SUCCESS;
 }
 
@@ -266,7 +266,7 @@ int capture()
   uint8_t timer = profiler_init();
   char dir_name[DIR_NAME_MAX] = "capture";
 
-  // Initialize log
+  // Initialize log (does nothing if not using syslog)
   log_init();
 
   // Print function entry
@@ -352,6 +352,7 @@ int capture()
                test_policy,
                test_sched.sched_priority);
 
+#ifdef WARM_UP
       // Loop captures frames to allow camera to warm up
       LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
       for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
@@ -359,6 +360,7 @@ int capture()
         sem_post(capture.start);
         sem_wait(capture.stop);
       }
+#endif
 
       // Loop captures frames to get stats
       for (uint32_t frames = 0; frames < NUM_FRAMES; frames++)
@@ -387,7 +389,6 @@ int capture()
       abort_test = 1;
       sem_post(capture.stop);
 
-
       // Wait for test thread to join
       PT_NOT_EQ_EXIT(res,
                      pthread_join(trans_thread, NULL),
@@ -402,4 +403,4 @@ int capture()
 
   log_destroy();
   return 0;
-} // ex4prob5()
+} // capture()
