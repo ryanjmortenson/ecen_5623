@@ -29,7 +29,8 @@
 #include "client.h"
 
 #define WARM_UP
-#define CLIENT_CONNECT
+// #define CLIENT_CONNECT
+// #define IMAGE_COMPRESSION
 
 // Socket info
 #define PORT (12345)
@@ -244,20 +245,17 @@ void * cap_func(void * param)
   FUNC_ENTRY;
 
   struct timespec time;
-  struct utsname info;
   cap_t * cap = (cap_t *)param;
   uint32_t count = 0;
-  uint32_t fd = 0;
   uint32_t res = 0;
   char file_name[FILE_NAME_MAX];
-  char uname_str[UNAME_MAX] = {0};
 
-  // Check for null pointer
-  if (NULL == param)
-  {
-    LOG_ERROR("param parameter was NULL");
-    return NULL;
-  }
+#ifdef IMAGE_COMPRESSION
+  const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 100};
+#else // IMAGE_COMPRRESSION
+  uint32_t fd = 0;
+  char uname_str[UNAME_MAX] = {0};
+  struct utsname info;
 
   // Create and write the uname info
   EQ_RET_E(res, uname(&info), -1, NULL);
@@ -277,24 +275,43 @@ void * cap_func(void * param)
     .uname_str = uname_str
   };
 
+#endif // IMAGE_COMPRESSION
+
+  // Check for null pointer
+  if (NULL == param)
+  {
+    LOG_ERROR("param parameter was NULL");
+    return NULL;
+  }
+
   // Loop capturing frames and displaying
   while(!abort_test)
   {
     // Wait for start signal
     sem_wait(cap->start);
 
+    // Capture the frame
+    START_CAPTURE(cap);
+
+    // Get the time
+    clock_gettime(CLOCK_REALTIME, &time);
+
+#ifdef IMAGE_COMPRESSION
+    // Create the file name to save data
+    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.jpg", cap->dir_name, count);
+    LOG_LOW("Using %s as file name for frame %d", file_name, count);
+
+    // TODO: Is it faster to use cvEncodeImage to send and write to socket
+    // or write to file read from file and send over socket?????
+    res = cvSaveImage(file_name, cap->frame, comp);
+    LOG_FATAL("cvSaveImage res: %d", res);
+#else // IMAGE_COMPRESSION
     // Create the file name to save data
     snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", cap->dir_name, count);
     LOG_LOW("Using %s as file name for frame %d", file_name, count);
 
     // Open file to store contents
     EQ_RET_E(fd, open(file_name, O_CREAT | O_WRONLY, FILE_PERM), -1, NULL);
-
-    // Capture the frame
-    START_CAPTURE(cap);
-
-    // Get the time
-    clock_gettime(CLOCK_REALTIME, &time);
 
     // Add the timestamp
     NOT_EQ_RET_E(res, add_timestamp(&p6, &time), SUCCESS, NULL);
@@ -312,6 +329,7 @@ void * cap_func(void * param)
 
     // Close file properly
     EQ_RET_E(res, close(fd), -1, NULL);
+#endif // IMAGE_COMPRESSION
 
     // Display the frame
     DISPLAY_FRAME(cap);
