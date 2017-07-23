@@ -56,6 +56,9 @@ LIB_OUT_FILE=lib$(EXERCISE_FILE)$(EXERCISE).a
 CFLAGS=-I$(APP_INC_DIR) \
        -Wall \
        -Werror \
+       -std=c99 \
+       -D_POSIX_C_SOURCE=199309L \
+       -D_BSD_SOURCE \
        -D PROBLEM$(PROBLEM)
 
 # Set colored logs if specified
