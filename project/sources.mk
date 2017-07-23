@@ -15,6 +15,7 @@ APP_SRC_C += \
 	$(APP_SRC_DIR)/main.c \
 	$(APP_SRC_DIR)/log.c \
 	$(APP_SRC_DIR)/profiler.c \
+	$(APP_SRC_DIR)/client.c \
 	$(APP_SRC_DIR)/server.c
 
 APP_SRC_CPP += \

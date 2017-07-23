@@ -43,11 +43,11 @@ static const char * p_log_color_str[] = {
 };
 
 // Format for color
-#define LOG_COLOR_FMT   "%s%-7s %-10s in [%12s] line %4u: "
+#define LOG_COLOR_FMT   "%s%-7s %-10s in [%20s] line %4u: "
 
 #else
 // Format for non-color logs
-#define LOG_FMT         "%-7s %-10s in [%12s] line %4u: "
+#define LOG_FMT         "%-7s %-10s in [%20s] line %4u: "
 
 #endif /* COLOR_LOGS */
 

@@ -26,12 +26,16 @@
 #include "log.h"
 #include "profiler.h"
 #include "project_defs.h"
+#include "client.h"
+
+#define WARM_UP
+#define CLIENT_CONNECT
 
 #define WINDOWNAME "capture"
 #define DEVICE_NUMBER (0)
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (200)
+#define NUM_FRAMES (1)
 #define PERIOD (100)
 #define NUM_RESOLUTIONS (1)
 #define NUM_TRANSFORMS (1)
@@ -74,6 +78,7 @@ typedef struct cap {
   sem_t * stop;
   res_t * res;
   char * dir_name;
+  int32_t sockfd;
 } cap_t;
 
 // Flag for killing thread
@@ -99,43 +104,43 @@ static inline uint8_t gamma_tf(uint8_t color)
   }
 }
 
-static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec * time)
+static inline
+uint32_t write_ppm(uint32_t fd, cap_t * cap, struct timespec * time, char * uname_str)
 {
   FUNC_ENTRY;
-  CHECK_NULL(data);
+  CHECK_NULL(cap);
+  CHECK_NULL(time);
+  CHECK_NULL(uname_str);
 
-  struct utsname info;
+  colors_t * data = (colors_t *)cap->frame->imageData;
   const char * header = "P6\n640 480\n";
   const char * pixel_max = "255\n";
   char timestamp[TIMESTAMP_MAX] = {0};
-  char uname_string[UNAME_MAX] = {0};
   uint32_t count = 0;
   uint32_t res = 0;
 
+  // Set first element in image_buf to zero
+  image_buf[0] = 0;
+
   // Write the header
   EQ_RET_E(res, write(fd, (void *) header, strlen(header)), -1, FAILURE);
+  EQ_RET_E(res, write(cap->sockfd, (void *) header, strlen(header)), -1, FAILURE);
 
   // Create and write the timestamp
   res = snprintf(timestamp,
                  TIMESTAMP_MAX,
                  "# Timestamp: %f\n",
-                 (double) time->tv_sec + (double) time->tv_nsec / 1000000000);
+                 (double) time->tv_sec + (double) time->tv_nsec);
   EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
+  EQ_RET_E(res, write(cap->sockfd, (void *) timestamp, res), -1, FAILURE);
 
-  // Create and write the uname info TODO: Construct once to cut down system calls
-  EQ_RET_E(res, uname(&info), -1, FAILURE);
-  res = snprintf(uname_string,
-                 UNAME_MAX,
-                 "# uname: %s %s %s %s %s\n",
-                 info.sysname,
-                 info.nodename,
-                 info.release,
-                 info.version,
-                 info.machine);
-  EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+  // Write the uname string
+  EQ_RET_E(res, write(fd, (void *) uname_str, strlen(uname_str)), -1, FAILURE);
+  EQ_RET_E(res, write(cap->sockfd, (void *) uname_str, strlen(uname_str)), -1, FAILURE);
 
   // Write the max pixel intensity
   EQ_RET_E(res, write(fd, (void *) pixel_max, strlen(pixel_max)), -1, FAILURE);
+  EQ_RET_E(res, write(cap->sockfd, (void *) pixel_max, strlen(pixel_max)), -1, FAILURE);
 
   // Write the image buffer with proper info
   for (uint32_t vres = 0; vres < 480; vres++)
@@ -160,24 +165,24 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
 
   // Write the image
   EQ_RET_E(res, write(fd, (void *) image_buf, 640*480*3), -1, FAILURE);
-
-  // Set first element in image_buf to zero
-  image_buf[0] = 0;
+  EQ_RET_E(res, write(cap->sockfd, (void *) image_buf, 640*480*3), -1, FAILURE);
 
   // Success
   return SUCCESS;
 }
 
-void * hough_int(void * param)
+void * device_capture(void * param)
 {
   FUNC_ENTRY;
 
   struct timespec time;
+  struct utsname info;
   cap_t * capture = (cap_t *)param;
   uint32_t count = 0;
   uint32_t fd = 0;
   uint32_t res = 0;
   char file_name[FILE_NAME_MAX];
+  char uname_str[UNAME_MAX] = {0};
 
   // Check for null pointer
   if (NULL == param)
@@ -186,18 +191,29 @@ void * hough_int(void * param)
     return NULL;
   }
 
+  // Create and write the uname info
+  EQ_RET_E(res, uname(&info), -1, NULL);
+  res = snprintf(uname_str,
+                 UNAME_MAX,
+                 "# uname: %s %s %s %s %s\n",
+                 info.sysname,
+                 info.nodename,
+                 info.release,
+                 info.version,
+                 info.machine);
+
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    // Wait for start signal
+    sem_wait(capture->start);
+
     // Create the file name to save data
     snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", capture->dir_name, count);
     LOG_LOW("Using %s as file name for frame %d", file_name, count);
 
     // Open file to store contents
     EQ_RET_E(fd, open(file_name, O_CREAT | O_WRONLY, FILE_PERM), -1, NULL);
-
-    // Wait for start signal
-    sem_wait(capture->start);
 
     // Capture the frame
     START_CAPTURE;
@@ -206,7 +222,7 @@ void * hough_int(void * param)
     clock_gettime(CLOCK_REALTIME, &time);
 
     // Write data to file
-    NOT_EQ_RET_E(res, write_ppm(fd, (colors_t *) capture->frame->imageData, &time), SUCCESS, NULL);
+    NOT_EQ_RET_E(res, write_ppm(fd, capture, &time, uname_str), SUCCESS, NULL);
 
     // Close file properly
     EQ_RET_E(res, close(fd), -1, NULL);
@@ -220,7 +236,7 @@ void * hough_int(void * param)
   }
 
   return NULL;
-} // hough_int
+} // device_capture()
 
 uint32_t create_dir(char * dir_name, uint8_t length)
 {
@@ -255,7 +271,7 @@ int capture()
   struct sched_param  sched;
   struct sched_param  test_sched;
   struct timespec diff;
-  pthread_t trans_thread;
+  pthread_t cap_thread;
   pthread_attr_t sched_attr;
   sem_t start;
   sem_t stop;
@@ -272,12 +288,18 @@ int capture()
   // Print function entry
   FUNC_ENTRY;
 
+#ifdef CLIENT_CONNECT
+  // Initialize client socket
+  int32_t sockfd = 0;
+  NOT_EQ_RET_E(res, client_socket_init(&sockfd), SUCCESS, FAILURE);
+#endif
+
   // Create a window
   cvNamedWindow(WINDOWNAME, CV_WINDOW_AUTOSIZE);
 
   // Create an array of function pointers
   void * (*transforms[NUM_TRANSFORMS])(void *) = {
-    hough_int,
+    device_capture,
   };
 
 #if 0
@@ -321,7 +343,7 @@ int capture()
   // Loop over function pointers to transforms
   for (uint8_t j = 0; j < NUM_TRANSFORMS; j++)
   {
-    void * (*cur_function)(void *) = transforms[j];
+    void * (*cur_func)(void *) = transforms[j];
 
     // Loop over resolutions
     for (uint8_t i = 0; i < NUM_RESOLUTIONS; i++)
@@ -334,21 +356,24 @@ int capture()
       LOG_HIGH("Setting resolution to %dx%d", resolution.hres, resolution.vres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_WIDTH, resolution.hres);
       cvSetCaptureProperty(capture.capture, CV_CAP_PROP_FRAME_HEIGHT, resolution.vres);
+
+      // Fill out general data structure for capture thread
       capture.dir_name = dir_name;
+      capture.sockfd = sockfd;
       capture.start = &start;
       capture.stop = &stop;
       capture.res = &resolution;
 
       // Create pthread
       PT_NOT_EQ_EXIT(res,
-                     pthread_create(&trans_thread, &sched_attr, cur_function, (void *)&capture),
+                     pthread_create(&cap_thread, &sched_attr, cur_func, (void *)&capture),
                      SUCCESS);
 
       // Get the scheduler parameters to display
       PT_NOT_EQ_EXIT(res,
-                     pthread_getschedparam(trans_thread, &test_policy, &test_sched),
+                     pthread_getschedparam(cap_thread, &test_policy, &test_sched),
                      SUCCESS);
-      LOG_HIGH("trans_thread policy: %d, priority: %d",
+      LOG_HIGH("cap_thread policy: %d, priority: %d",
                test_policy,
                test_sched.sched_priority);
 
@@ -357,8 +382,7 @@ int capture()
       LOG_MED("Running %d frames for warmup", WARM_UP_FRAMES);
       for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
       {
-        sem_post(capture.start);
-        sem_wait(capture.stop);
+        EQ_RET_E(capture.frame, cvQueryFrame(capture.capture), NULL, FAILURE);
       }
 #endif
 
@@ -391,7 +415,7 @@ int capture()
 
       // Wait for test thread to join
       PT_NOT_EQ_EXIT(res,
-                     pthread_join(trans_thread, NULL),
+                     pthread_join(cap_thread, NULL),
                      SUCCESS);
       LOG_HIGH("test thread joined");
     }
@@ -400,6 +424,11 @@ int capture()
   // Destroy capture and window
   cvReleaseCapture(&capture.capture);
   cvDestroyWindow(WINDOWNAME);
+
+#ifdef CLIENT_CONNECT
+  // Initialize client socket
+  NOT_EQ_RET_E(res, client_socket_destroy(sockfd), SUCCESS, FAILURE);
+#endif
 
   log_destroy();
   return 0;
