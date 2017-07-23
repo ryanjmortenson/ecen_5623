@@ -38,7 +38,8 @@
 #define WARM_UP_FRAMES (40)
 #define DIR_NAME_MAX (255)
 #define FILE_NAME_MAX DIR_NAME_MAX
-#define TIMESTAMP_MAX (30)
+#define TIMESTAMP_MAX (40)
+#define UNAME_MAX (256)
 #define FILE_PERM (S_IRWXU | S_IRWXO | S_IRWXG)
 
 #define TIMING_BUFFER (100)
@@ -93,13 +94,11 @@ static inline uint8_t gamma_tf(uint8_t color)
   float conversion = (float)color / 255.0f;
   if (conversion >= 0 && conversion < 0.0013f)
   {
-    uint8_t test = (uint8_t) ((float)(12.92f * conversion) * 255);
-    return test;
+    return (uint8_t) ((float)(12.92f * conversion) * 255);
   }
   else
   {
-    uint8_t test = (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * 255);
-    return test;
+    return (uint8_t) ((float)(1.055f * pow(conversion, .4545f) - 0.055f) * 255);
   }
 }
 
@@ -109,9 +108,10 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
   CHECK_NULL(data);
 
   struct utsname info;
-  const char * header = "P6\n640 480\n255\n# Timestamp: ";
-  char timestamp[TIMESTAMP_MAX];
-  char uname_string[256];
+  const char * header = "P6\n640 480\n";
+  const char * pixel_max = "255\n";
+  char timestamp[TIMESTAMP_MAX] = {0};
+  char uname_string[UNAME_MAX] = {0};
   uint32_t count = 0;
   uint32_t res = 0;
 
@@ -119,20 +119,25 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
   EQ_RET_E(res, write(fd, (void *) header, strlen(header)), -1, FAILURE);
 
   // Create and write the timestamp
-  res = snprintf(timestamp, TIMESTAMP_MAX, "%d.%d\n", (uint32_t) time->tv_sec, (uint32_t) time->tv_nsec);
-  // EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
+  res = snprintf(timestamp,
+                 TIMESTAMP_MAX,
+                 "# Timestamp: %d.%d\n",
+                 (uint32_t) time->tv_sec,
+                 (uint32_t) time->tv_nsec);
+  EQ_RET_E(res, write(fd, (void *) timestamp, res), -1, FAILURE);
 
   // Create and write the uname info
   EQ_RET_E(res, uname(&info), -1, FAILURE);
   res = snprintf(uname_string,
-                 256,
+                 UNAME_MAX,
                  "# uname: %s %s %s %s %s\n",
                  info.sysname,
                  info.nodename,
                  info.release,
                  info.version,
                  info.machine);
-  // EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (void *) uname_string, res), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (void *) pixel_max, strlen(pixel_max)), -1, FAILURE);
 
   // Write the image buffer with proper info
   for (uint32_t vres = 0; vres < 480; vres++)
@@ -144,9 +149,9 @@ static inline uint32_t write_ppm(uint32_t fd, colors_t * data, struct timespec *
       image_buf[count + 1] = gamma_tf(data->blue);
       image_buf[count + 2] = gamma_tf(data->red);
 #else
-      image_buf[count]     = (data->green);
-      image_buf[count + 1] = (data->blue);
-      image_buf[count + 2] = (data->red);
+      image_buf[count]     = (data->red);
+      image_buf[count + 1] = (data->green);
+      image_buf[count + 2] = (data->blue);
 #endif
       count += 3;
       data++;
