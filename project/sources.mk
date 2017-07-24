@@ -16,10 +16,10 @@ APP_SRC_C += \
 	$(APP_SRC_DIR)/log.c \
 	$(APP_SRC_DIR)/profiler.c \
 	$(APP_SRC_DIR)/client.c \
+	$(APP_SRC_DIR)/capture.c \
 	$(APP_SRC_DIR)/server.c
 
 APP_SRC_CPP += \
-	$(APP_SRC_DIR)/capture.cpp
 
 TEST_SRC+= \
 	$(NON_MAIN_SRC) \

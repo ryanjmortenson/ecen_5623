@@ -29,8 +29,8 @@
 #include "client.h"
 
 #define WARM_UP
-// #define CLIENT_CONNECT
-// #define IMAGE_COMPRESSION
+#define CLIENT_CONNECT
+#define IMAGE_COMPRESSION
 
 // Socket info
 #define PORT (12345)
@@ -251,6 +251,9 @@ void * cap_func(void * param)
   char file_name[FILE_NAME_MAX];
 
 #ifdef IMAGE_COMPRESSION
+#ifdef CLIENT_CONNECT
+  uint32_t fd = 0;
+#endif // CLIENT_CONNECT
   const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 100};
 #else // IMAGE_COMPRRESSION
   uint32_t fd = 0;
@@ -305,6 +308,18 @@ void * cap_func(void * param)
     // or write to file read from file and send over socket?????
     res = cvSaveImage(file_name, cap->frame, comp);
     LOG_FATAL("cvSaveImage res: %d", res);
+
+#ifdef CLIENT_CONNECT
+    // Open file to read contents
+    EQ_RET_E(fd, open(file_name, O_RDONLY), -1, NULL);
+
+    // Read the file into a buffer
+    EQ_RET_E(res, read(fd, image_buf, IMAGE_NUM_BYTES), -1, NULL);
+
+    // Send bytes over socket
+    NOT_EQ_RET_E(res, client_socket_send(cap->sockfd, image_buf, res), SUCCESS, NULL);
+#endif // CLIENT_CONNECT
+
 #else // IMAGE_COMPRESSION
     // Create the file name to save data
     snprintf(file_name, FILE_NAME_MAX, "%s/capture_%d.ppm", cap->dir_name, count);
