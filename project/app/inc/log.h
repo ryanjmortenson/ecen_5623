@@ -7,7 +7,7 @@
 #ifndef __LOG_H__
 #define __LOG_H__
 
-#include <cstdio>
+#include <stdio.h>
 
 // Logging level enumerations
 typedef enum {
