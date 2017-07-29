@@ -20,6 +20,7 @@
 
 uint32_t get_uname(char * uname_str, uint32_t count)
 {
+  FUNC_ENTRY;
   CHECK_NULL(uname_str);
   struct utsname info;
   uint32_t res = 0;
@@ -52,12 +53,13 @@ uint32_t get_timestamp(struct timespec * time, char * timestamp, uint32_t count)
   return SUCCESS;
 }
 
-uint32_t create_dir(char * dir_name, uint8_t length)
+uint32_t create_dir(char * dir_name)
 {
+  FUNC_ENTRY;
+  CHECK_NULL(dir_name);
+
   struct timespec dir_time;
-  struct stat st = {0};
   uint32_t res = 0;
-  const char * capture = "capture";
 
   // Check for null pointer
   CHECK_NULL(dir_name);
@@ -65,17 +67,22 @@ uint32_t create_dir(char * dir_name, uint8_t length)
   // Get the system time to append to directory to be created
   clock_gettime(CLOCK_REALTIME, &dir_time);
 
-  // Get the seconds to create a directory to store captured images
-  snprintf(dir_name, length, "%s", capture);
-
   // Log the newly create directory name
   LOG_LOW("Trying to create directory name: %s", dir_name);
 
-  // Stat to make sure it doesn't exist
-  NOT_EQ_RET_E(res, stat(dir_name, &st), -1, FAILURE);
-
-  // Try to create directory now
-  NOT_EQ_RET_E(res, mkdir(dir_name, FILE_PERM), SUCCESS, FAILURE);
-
-  return SUCCESS;
+  res = mkdir(dir_name, FILE_PERM);
+  if (res == 0)
+  {
+    return SUCCESS;
+  }
+  else if (res == -1 && errno == EEXIST)
+  {
+    LOG_MED("%s directory already exists", dir_name);
+    return SUCCESS;
+  }
+  else
+  {
+    LOG_ERROR("Could not create dir %s", dir_name);
+    return FAILURE;
+  }
 } // create_dir()

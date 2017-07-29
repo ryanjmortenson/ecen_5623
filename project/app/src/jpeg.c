@@ -39,13 +39,12 @@ static image_q_inf_t image_q_inf;
 static resolution_t resolution;
 
 static inline
-uint32_t write_jpeg(char * file_name, cap_info_t cap)
+uint32_t write_jpeg(char * file_name, cap_info_t cap, CvMat * image)
 {
   FUNC_ENTRY;
   uint16_t uname_len = strlen(uname_str);
   uint16_t timestamp_len = 0;
   uint16_t com_len = 0;
-  uint32_t image_size = 0;
   int32_t res = 0;
   int32_t fd = 0;
   char timestamp[TIMESTAMP_MAX];
@@ -53,16 +52,10 @@ uint32_t write_jpeg(char * file_name, cap_info_t cap)
   char com_start[] = {0xff, 0xfe};
 
   // Open file to store contents
-  EQ_RET_E(fd, open(file_name, O_RDWR), -1, FAILURE);
-
-  // Open file to store contents
-  EQ_RET_E(image_size, read(fd, image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
-
-  // Seek back to zero for writing
-  EQ_RET_E(res, lseek(fd, 0, SEEK_SET), -1, FAILURE);
+  EQ_RET_E(fd, open(file_name, O_CREAT | O_RDWR, FILE_PERM), -1, FAILURE);
 
   // Get the locatin of the start of the image
-  char * start = strstr(image_buf, image_start);
+  char * start = strstr((char *)image->data.ptr, image_start);
 
   // Write the image start
   EQ_RET_E(res, write(fd, image_start, 2), -1, FAILURE);
@@ -88,7 +81,14 @@ uint32_t write_jpeg(char * file_name, cap_info_t cap)
   EQ_RET_E(res, write(fd, uname_str, uname_len), -1, FAILURE);
 
   // Write the rest of the image
-  EQ_RET_E(res, write(fd, (start + 2), image_size), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (start + 2), image->cols), -1, FAILURE);
+
+  // Seek back to the beginning to populate a buffer for sending over socket
+  EQ_RET_E(res, lseek(fd, 0, SEEK_SET), -1, FAILURE);
+
+  // Read it all into a buffer
+  EQ_RET_E(res, read(fd, image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
+  LOG_FATAL("Read %d bytes", res);
 
   // Close file properly
   EQ_RET_E(res, close(fd), -1, FAILURE);
@@ -101,8 +101,9 @@ void * handle_jpeg_t(void * param)
   FUNC_ENTRY;
   struct timespec diff;
   cap_info_t cap;
+  CvMat * image;
   char file_name[FILE_NAME_MAX];
-  static const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 100};
+  static const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
   uint32_t res = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
@@ -127,10 +128,10 @@ void * handle_jpeg_t(void * param)
     START_TIME;
 
     // Encode the frame into JPEG
-    NOT_EQ_RET_E(res, cvSaveImage(file_name, cap.frame, comp), 1, NULL);
+    EQ_RET_E(image, cvEncodeImage(".jpeg", cap.frame, comp), NULL, NULL);
 
     // Add comment information
-    EQ_RET_E(res, write_jpeg(file_name, cap), 1, NULL);
+    EQ_RET_E(res, write_jpeg(file_name, cap, image), 1, NULL);
 
     // Increment counter
     count++;
@@ -153,6 +154,9 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
   // Set the resolution
   resolution.hres = hres;
   resolution.vres = vres;
+
+  // Try to create directory for storing images
+  EQ_RET_E(res, create_dir(DIR_NAME), FAILURE, FAILURE);
 
   // Try to create the queue
   EQ_RET_E(image_q_inf.image_q,
@@ -187,7 +191,7 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
   EQ_RET_E(rt_max_pri, sched_get_priority_max(SCHED_FIFO), -1, FAILURE);
 
   // Set the priority to max - 1 for the test thread
-  sched.sched_priority = rt_max_pri - 2;
+  sched.sched_priority = rt_max_pri - 1;
   PT_NOT_EQ_RET(res,
                 pthread_attr_setschedparam(&sched_attr, &sched),
                 SUCCESS,

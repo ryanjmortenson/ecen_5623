@@ -18,5 +18,5 @@ uint32_t get_timestamp(struct timespec * time, char * timestamp, uint32_t count)
 * @param length length of buffer holding directory name
 * @return SUCCESS/FAILURE
 */
-uint32_t create_dir(char * dir_name, uint8_t length);
+uint32_t create_dir(char * dir_name);
 #endif /* _UTILITIES_H */

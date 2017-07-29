@@ -232,6 +232,9 @@ uint32_t ppm_init(uint32_t hres, uint32_t vres)
   resolution.hres = hres;
   resolution.vres = vres;
 
+  // Try to create directory for storing images
+  EQ_RET_E(res, create_dir(DIR_NAME), FAILURE, FAILURE);
+
   // Try to create the queue
   EQ_RET_E(image_q_inf.image_q,
            mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
@@ -265,7 +268,7 @@ uint32_t ppm_init(uint32_t hres, uint32_t vres)
   EQ_RET_E(rt_max_pri, sched_get_priority_max(SCHED_FIFO), -1, FAILURE);
 
   // Set the priority to max - 1 for the test thread
-  sched.sched_priority = rt_max_pri - 2;
+  sched.sched_priority = rt_max_pri - 1;
   PT_NOT_EQ_RET(res,
                 pthread_attr_setschedparam(&sched_attr, &sched),
                 SUCCESS,

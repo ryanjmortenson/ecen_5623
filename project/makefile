@@ -58,12 +58,17 @@ CFLAGS=-I$(APP_INC_DIR) \
        -Werror \
        -std=c99 \
        -D_POSIX_C_SOURCE=199309L \
-       -D_BSD_SOURCE \
+       -D_DEFAULT_SOURCE \
        -D PROBLEM$(PROBLEM)
 
 # Set colored logs if specified
 ifneq ($(COLOR_LOGS),)
 	CFLAGS+=-D COLOR_LOGS
+endif
+
+# Set no compression
+ifeq ($(NO_COMP),)
+	CFLAGS+=-D JPEG_COMPRESSION
 endif
 
 # System log turned on
@@ -236,7 +241,6 @@ CLEAN+=$(OUT) \
        exercise*.out \
        *.map \
        *.objdump \
-			 capture_* \
        $(UNIT_TEST_OUT) \
        $(LIB_OUT_FILE) \
        $(CMOCKA_LIB)

@@ -4,8 +4,6 @@
 *
 */
 
-#define JPEG_COMPRESSION
-
 #include <errno.h>
 #include <fcntl.h>
 #include <mqueue.h>
@@ -22,12 +20,16 @@
 #include <time.h>
 
 #include "capture.h"
-#include "jpeg.h"
 #include "log.h"
 #include "profiler.h"
-#include "ppm.h"
 #include "project_defs.h"
 #include "utilities.h"
+
+#ifdef JPEG_COMPRESSION
+#include "jpeg.h"
+#else
+#include "ppm.h"
+#endif
 
 #define WARM_UP
 
@@ -195,7 +197,7 @@ int capture()
                 SUCCESS);
 
   // Set the priority to max - 1 for the test thread
-  sched.sched_priority = rt_max_pri - 1;
+  sched.sched_priority = rt_max_pri - 2;
   PT_NOT_EQ_EXIT(res,
                  pthread_attr_setschedparam(&sched_attr, &sched),
                  SUCCESS);
