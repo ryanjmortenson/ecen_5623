@@ -17,6 +17,9 @@ APP_SRC_C += \
 	$(APP_SRC_DIR)/profiler.c \
 	$(APP_SRC_DIR)/client.c \
 	$(APP_SRC_DIR)/capture.c \
+	$(APP_SRC_DIR)/ppm.c \
+	$(APP_SRC_DIR)/jpeg.c \
+	$(APP_SRC_DIR)/utilities.c \
 	$(APP_SRC_DIR)/server.c
 
 APP_SRC_CPP += \

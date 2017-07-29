@@ -12,6 +12,15 @@ typedef enum status {
   FAILURE
 } status_t;
 
+// Helpful Macros
+#define START_TIME start_timer(timer)
+#define DISPLAY_TIMESTAMP LOG_FATAL("sec: %d, millisec: %f", \
+                                    diff.tv_sec,             \
+                                    (float)(diff.tv_nsec)/1000000)
+
+#define GET_TIME stop_timer(timer);      \
+                 get_time(timer, &diff);
+
 // Null pointer check
 #define CHECK_NULL(x) if (x == NULL) { return FAILURE; }
 
