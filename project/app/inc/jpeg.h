@@ -1,11 +1,11 @@
-/** @file ppm.h
+/** @file jpeg.h
 *
-* @brief Exposes PPM specific functionality
+* @brief Exposes JPEG specific functionality
 *
 */
 
-#ifndef _PPM_H
-#define _PPM_H
+#ifndef _JPEG_H
+#define _JPEG_H
 
 // Max timestamp length
 #define TIMESTAMP_MAX (32)
@@ -17,4 +17,4 @@
 #define IMAGE_NUM_BYTES (HRES * VRES * BYTES_PER_PIXEL)
 
 uint32_t jpeg_init();
-#endif /* _PPM_H */
+#endif /* _JPEG_H */
