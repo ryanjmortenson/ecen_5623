@@ -66,8 +66,10 @@
 #define DISPLAY_FRAME(cap, frame) cvShowImage(WINDOWNAME, frame); \
                                   cvWaitKey(1)
 
-// flag for killing thread
-static uint32_t abort_test = 0;
+// Flag for killing thread
+uint32_t abort_test = 0;
+
+// Ping Pong buffer for cap info
 static cap_info_t cap_info[CAP_BUF_SIZE];
 
 // Capture structure to pass into pthread
@@ -254,8 +256,15 @@ int capture()
     // Sleep for the period of a frame
     usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
 
-    // Wait for frame to be captured
-    sem_wait(cap.stop);
+    if (!abort_test)
+    {
+      // Wait for frame to be captured
+      sem_wait(cap.stop);
+    }
+    else
+    {
+      break;
+    }
 
     // Get the time
     GET_TIME;

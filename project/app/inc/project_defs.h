@@ -48,6 +48,24 @@ typedef enum status {
     return ret;                                                 \
   }
 
+// Check value not equal, print errno, set abort, and return a value
+#define NOT_EQ_RET_EA(res, func, val, ret, abort)               \
+  if((res = func) != val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
+    abort = 1;                                                  \
+    return ret;                                                 \
+  }
+
+// Check value equal, print errno, set abort, and return a value
+#define EQ_RET_EA(res, func, val, ret, abort)                   \
+  if((res = func) == val)                                       \
+  {                                                             \
+    LOG_ERROR(#func " failed with error: %s", strerror(errno)); \
+    abort = 1;                                                  \
+    return ret;                                                 \
+  }
+
 // Check value equal, print errno, and return failure
 #define EQ_EXIT_E(res, func, val)                               \
   if((res = func) == val)                                       \

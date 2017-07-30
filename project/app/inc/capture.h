@@ -38,5 +38,4 @@ typedef struct {
 */
 int capture();
 
-
 #endif /* __CAPTURE_H__ */

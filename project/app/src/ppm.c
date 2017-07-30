@@ -32,17 +32,38 @@
 #define MAX_INTENSITY (255)
 #define MAX_INTENSITY_FLOAT (255.0f)
 
-// Image buffer for current frame
-static char image_buf[IMAGE_NUM_BYTES];
+// Abort flag
+extern uint8_t abort_test;
 
-// Hold the uname str
-static char uname_str[UNAME_MAX];
+// PPM capture info
+typedef struct {
+  // Image buffer for current frame
+  char image_buf[IMAGE_NUM_BYTES];
 
-// Message queue
-static image_q_inf_t image_q_inf;
+  // Hold the uname str
+  char uname_str[UNAME_MAX];
 
-// Resolution info
-static resolution_t resolution;
+  // Message queue
+  image_q_inf_t image_q_inf;
+
+  // Resolution info
+  resolution_t resolution;
+
+  // Timestamp to place in image
+  char timestamp[TIMESTAMP_MAX];
+
+  // Start of header
+  char * header;
+
+  // Max color value
+  char * max_val;
+
+  // Captupre info object
+  cap_info_t cap;
+
+  // Filename
+  char file_name[FILE_NAME_MAX];
+} ppm_cap_t;
 
 /*!
 * @brief Applies gamma transfer function to color intensity
@@ -71,7 +92,7 @@ uint8_t gamma_tf(uint8_t color)
 * @return SUCCESS/FAILURE
 */
 static inline
-uint32_t write_ppm(uint32_t fd, ppm_t * ppm)
+uint32_t write_ppm(uint32_t fd, ppm_cap_t * ppm)
 {
   FUNC_ENTRY;
   CHECK_NULL(ppm);
@@ -104,7 +125,7 @@ uint32_t write_ppm(uint32_t fd, ppm_t * ppm)
            FAILURE);
 
   // Write the color data
-  EQ_RET_E(res, write(fd, (void *) ppm->color_data, IMAGE_NUM_BYTES), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (void *) ppm->image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
 
   // Success
   return SUCCESS;
@@ -117,7 +138,7 @@ uint32_t write_ppm(uint32_t fd, ppm_t * ppm)
 * @return SUCCESS/FAILURE
 */
 static inline
-uint32_t create_image_buf(ppm_t * ppm, colors_t * data)
+uint32_t create_image_buf(ppm_cap_t * ppm, colors_t * data)
 {
   FUNC_ENTRY;
   CHECK_NULL(data);
@@ -126,9 +147,9 @@ uint32_t create_image_buf(ppm_t * ppm, colors_t * data)
   uint32_t count = 0;
 
   // Write the image buffer with proper info
-  for (uint32_t vres = 0; vres < VRES; vres++)
+  for (uint32_t vres = 0; vres < ppm->resolution.vres; vres++)
   {
-    for (uint32_t hres = 0; hres < HRES; hres++)
+    for (uint32_t hres = 0; hres < ppm->resolution.hres; hres++)
     {
 #ifdef GAMMA_FUNCTION
       // Do gamma function conversion which is specified by the NetPbm spec
@@ -137,9 +158,9 @@ uint32_t create_image_buf(ppm_t * ppm, colors_t * data)
       image_buf[count + 2] = gamma_tf(data->red);
 #else // GAMMA_FUNCTION
       // Write the raw intensity
-      image_buf[count]     = (data->red);
-      image_buf[count + 1] = (data->green);
-      image_buf[count + 2] = (data->blue);
+      ppm->image_buf[count]     = (data->red);
+      ppm->image_buf[count + 1] = (data->green);
+      ppm->image_buf[count + 2] = (data->blue);
 #endif // GAMMA_FUNCTION
       count += 3;
       data++;
@@ -147,7 +168,6 @@ uint32_t create_image_buf(ppm_t * ppm, colors_t * data)
   }
 
   // Set the color data pointer to image buf
-  ppm->color_data = image_buf;
   return SUCCESS;
 } // create_image_buf()
 
@@ -155,21 +175,38 @@ void * handle_ppm_t(void * param)
 {
   FUNC_ENTRY;
   struct timespec diff;
-  cap_info_t cap;
-  char file_name[FILE_NAME_MAX];
+  ppm_cap_t cap;
   uint32_t res = 0;
   uint32_t fd = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
 
-  // Create ppm p6 struct since the only ppm type used
-  ppm_t p6 = {
-    .header = P6_HEADER,
-    .max_val = MAX_INTENSITY_STR,
-    .uname_str = uname_str
-  };
+  // Set the resolution
+  cap.resolution.hres = HRES;
+  cap.resolution.vres = VRES;
 
-  while(1)
+  // Try to create the queue
+  EQ_RET_EA(cap.image_q_inf.image_q,
+            mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
+            -1,
+            NULL,
+            abort_test);
+
+  // Get the message queue attributes
+  NOT_EQ_RET_EA(res,
+                mq_getattr(cap.image_q_inf.image_q, &cap.image_q_inf.attr),
+                SUCCESS,
+                NULL,
+                abort_test)
+
+  // Get the uname string and display
+  EQ_RET_EA(res, get_uname(cap.uname_str, UNAME_MAX), FAILURE, NULL, abort_test);
+  LOG_LOW("Using uname string: %s", cap.uname_str);
+
+  cap.header = P6_HEADER;
+  cap.max_val = MAX_INTENSITY_STR;
+
+  while(!abort_test)
   {
     // Get the time after the loop is done
     GET_TIME;
@@ -178,46 +215,54 @@ void * handle_ppm_t(void * param)
     DISPLAY_TIMESTAMP;
 
     // Create the file name to save data
-    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%04d.ppm", DIR_NAME, count);
-    LOG_LOW("Using %s as file name for frame %d", file_name, count);
-    EQ_RET_E(res,
-             mq_receive(image_q_inf.image_q, (char *)&cap, image_q_inf.attr.mq_msgsize, NULL),
-             -1,
-             NULL);
+    snprintf(cap.file_name, FILE_NAME_MAX, "%s/capture_%04d.ppm", DIR_NAME, count);
+    LOG_LOW("Using %s as file name for frame %d", cap.file_name, count);
+    EQ_RET_EA(res,
+              mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
+              -1,
+              NULL,
+              abort_test);
 
     // Start the timer after the message has been capture to write to disk
     START_TIME;
 
     // Translate the data from the capture buffer into properly formatted ppm
     // data
-    NOT_EQ_RET_E(res,
-                create_image_buf(&p6, (colors_t *)cap.frame->imageData),
-                SUCCESS,
-                NULL);
+    NOT_EQ_RET_EA(res,
+                  create_image_buf(&cap, (colors_t *)cap.cap.frame->imageData),
+                  SUCCESS,
+                  NULL,
+                  abort_test);
 
     // Open file to store contents
-    EQ_RET_E(fd, open(file_name, O_CREAT | O_WRONLY, FILE_PERM), -1, NULL);
+    EQ_RET_EA(fd,
+              open(cap.file_name, O_CREAT | O_WRONLY, FILE_PERM),
+              -1,
+              NULL,
+              abort_test);
 
     // Add the timestamp to the image comment
-    EQ_RET_E(res,
-             get_timestamp(&cap.time, p6.timestamp, TIMESTAMP_MAX),
+    EQ_RET_EA(res,
+             get_timestamp(&cap.cap.time, cap.timestamp, TIMESTAMP_MAX),
              FAILURE,
-             NULL);
+             NULL,
+             abort_test);
 
     // Write data to file
-    NOT_EQ_RET_E(res, write_ppm(fd, &p6), SUCCESS, NULL);
+    NOT_EQ_RET_EA(res, write_ppm(fd, &cap), SUCCESS, NULL, abort_test);
 
     // Close file properly
-    EQ_RET_E(res, close(fd), -1, NULL);
+    EQ_RET_EA(res, close(fd), -1, NULL, abort_test);
 
     // Increment counter
     count++;
   }
-  mq_close(image_q_inf.image_q);
+  LOG_MED("handle_ppm_t thread exiting");
+  mq_close(cap.image_q_inf.image_q);
   return NULL;
 } // handle_ppm_t()
 
-uint32_t ppm_init(uint32_t hres, uint32_t vres)
+uint32_t ppm_init()
 {
   FUNC_ENTRY;
   struct sched_param sched;
@@ -228,28 +273,8 @@ uint32_t ppm_init(uint32_t hres, uint32_t vres)
   int32_t rt_max_pri = 0;
   int32_t ppm_policy = 0;
 
-  // Set the resolution
-  resolution.hres = hres;
-  resolution.vres = vres;
-
   // Try to create directory for storing images
   EQ_RET_E(res, create_dir(DIR_NAME), FAILURE, FAILURE);
-
-  // Try to create the queue
-  EQ_RET_E(image_q_inf.image_q,
-           mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
-           -1,
-           FAILURE);
-
-  // Get the message queue attributes
-  NOT_EQ_RET_E(res,
-               mq_getattr(image_q_inf.image_q, &image_q_inf.attr),
-               SUCCESS,
-               FAILURE)
-
-  // Get the uname string and display
-  EQ_RET_E(res, get_uname(uname_str, 255), FAILURE, FAILURE);
-  LOG_LOW("Using uname string: %s", uname_str);
 
   // Initialize the schedule attributes
   PT_NOT_EQ_EXIT(res, pthread_attr_init(&sched_attr), SUCCESS);

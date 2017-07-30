@@ -16,15 +16,6 @@
 #define BYTES_PER_PIXEL (3)
 #define IMAGE_NUM_BYTES (HRES * VRES * BYTES_PER_PIXEL)
 
-// PPM structure
-typedef struct ppm {
-  char timestamp[TIMESTAMP_MAX];
-  char * uname_str;
-  char * header;
-  char * max_val;
-  char * color_data;
-} ppm_t;
-
 // Structure to overlay blue, green, and red
 typedef struct colors {
   uint8_t blue;

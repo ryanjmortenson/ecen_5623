@@ -27,25 +27,40 @@
 #define DIR_NAME "capture_jpeg"
 #define IMAGE_EXT ".jpeg"
 
-// Image buffer for current frame
-static char image_buf[IMAGE_NUM_BYTES];
+#define NUM_IMAGE_BUFS (4)
 
-// Hold the uname str
-static char uname_str[UNAME_MAX];
-static uint16_t uname_len = 0;
-static uint16_t comment_len = 0;
+// Flag for setting abort status
+extern uint8_t abort_test;
 
-// Message queue
-static image_q_inf_t image_q_inf;
+// Struct of information for the thread
+typedef struct {
+  // Image buffer for current frame
+  char image_buf[NUM_IMAGE_BUFS][IMAGE_NUM_BYTES];
+  char * cur_buf;
 
-// Resolution info
-static resolution_t resolution;
+  // Hold the uname str
+  char uname_str[UNAME_MAX];
+  uint16_t uname_len;
+  uint16_t comment_len;
+
+  // Message queue
+  image_q_inf_t image_q_inf;
+
+  // Filename
+  char file_name[FILE_NAME_MAX];
+
+  // Current image pointer
+  CvMat * image;
+
+  // Captupre info object
+  cap_info_t cap;
+} jpeg_cap_t;
 
 // Add data macro
 #define ADD_DATA(dest, src, count, tally) memcpy(&dest[tally], src, count); tally += count
 
 static inline
-uint32_t write_jpeg(char * file_name, cap_info_t cap, CvMat * image)
+uint32_t write_jpeg(jpeg_cap_t * cap)
 {
   FUNC_ENTRY;
   int32_t res = 0;
@@ -56,24 +71,24 @@ uint32_t write_jpeg(char * file_name, cap_info_t cap, CvMat * image)
   char com_start[] = {0xff, 0xfe};
 
   // Open file to store contents
-  EQ_RET_E(fd, open(file_name, O_CREAT | O_RDWR, FILE_PERM), -1, FAILURE);
+  EQ_RET_E(fd, open(cap->file_name, O_CREAT | O_RDWR, FILE_PERM), -1, FAILURE);
 
   // Add the timestamp to the image comment
   EQ_RET_E(res,
-           get_timestamp(&cap.time, timestamp, TIMESTAMP_MAX),
+           get_timestamp(&cap->cap.time, timestamp, TIMESTAMP_MAX),
            FAILURE,
            FAILURE);
 
   // Add all image data to a buffer including header
-  ADD_DATA(image_buf, image_start, 2, cur_loc);
-  ADD_DATA(image_buf, com_start, 2, cur_loc);
-  ADD_DATA(image_buf, &comment_len, 2, cur_loc);
-  ADD_DATA(image_buf, timestamp, TIMESTAMP_MAX, cur_loc);
-  ADD_DATA(image_buf, uname_str, uname_len, cur_loc);
-  ADD_DATA(image_buf, (image->data.ptr + 2), image->cols, cur_loc);
+  ADD_DATA(cap->cur_buf, image_start, 2, cur_loc);
+  ADD_DATA(cap->cur_buf, com_start, 2, cur_loc);
+  ADD_DATA(cap->cur_buf, &(cap->comment_len), 2, cur_loc);
+  ADD_DATA(cap->cur_buf, timestamp, TIMESTAMP_MAX, cur_loc);
+  ADD_DATA(cap->cur_buf, cap->uname_str, cap->uname_len, cur_loc);
+  ADD_DATA(cap->cur_buf, (cap->image->data.ptr + 2), cap->image->cols, cur_loc);
 
   // Write the file out
-  EQ_RET_E(res, write(fd, image_buf, cur_loc), -1, FAILURE);
+  EQ_RET_E(res, write(fd, cap->cur_buf, cur_loc), -1, FAILURE);
 
   // Close file properly
   EQ_RET_E(res, close(fd), -1, FAILURE);
@@ -85,23 +100,39 @@ void * handle_jpeg_t(void * param)
 {
   FUNC_ENTRY;
   struct timespec diff;
-  cap_info_t cap;
-  CvMat * image;
-  char file_name[FILE_NAME_MAX];
+  jpeg_cap_t cap;
   static const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
   uint32_t res = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
 
+  // Get the uname string and display
+  EQ_RET_EA(res, get_uname(cap.uname_str, UNAME_MAX), FAILURE, NULL, abort_test);
+  LOG_LOW("Using uname string: %s", cap.uname_str);
+
   // Get the uname length for the comment
-  uname_len = strlen(uname_str);
+  cap.uname_len = strlen(cap.uname_str);
 
   // Calculate the total comment length for this image add 2 to include null
   // term
-  comment_len = TIMESTAMP_MAX + uname_len + 2;
-  comment_len = (comment_len << 8 | comment_len >> 8);
+  cap.comment_len = TIMESTAMP_MAX + cap.uname_len + 2;
+  cap.comment_len = (cap.comment_len << 8 | cap.comment_len >> 8);
 
-  while(1)
+  // Try to create the queue
+  EQ_RET_EA(cap.image_q_inf.image_q,
+            mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
+            -1,
+            NULL,
+            abort_test);
+
+  // Get the message queue attributes
+  NOT_EQ_RET_EA(res,
+                mq_getattr(cap.image_q_inf.image_q, &cap.image_q_inf.attr),
+                SUCCESS,
+                NULL,
+                abort_test)
+
+  while(!abort_test)
   {
     // Get the time after the loop is done
     GET_TIME;
@@ -109,27 +140,36 @@ void * handle_jpeg_t(void * param)
     // Display the timestamp
     DISPLAY_TIMESTAMP;
 
+    // Get the current buffer for processing
+    cap.cur_buf = cap.image_buf[count % NUM_IMAGE_BUFS];
+
     // Create the file name to save data
-    snprintf(file_name, FILE_NAME_MAX, "%s/capture_%04d.jpeg", DIR_NAME, count);
-    LOG_LOW("Using %s as file name for frame %d", file_name, count);
-    EQ_RET_E(res,
-             mq_receive(image_q_inf.image_q, (char *)&cap, image_q_inf.attr.mq_msgsize, NULL),
-             -1,
-             NULL);
+    snprintf(cap.file_name, FILE_NAME_MAX, "%s/capture_%04d.jpeg", DIR_NAME, count);
+    LOG_LOW("Using %s as file name for frame %d", cap.file_name, count);
+    EQ_RET_EA(res,
+              mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
+              -1,
+              NULL,
+              abort_test);
 
     // Start the timer after the message has been capture to write to disk
     START_TIME;
 
     // Encode the frame into JPEG
-    EQ_RET_E(image, cvEncodeImage(IMAGE_EXT, cap.frame, comp), NULL, NULL);
+    EQ_RET_EA(cap.image,
+              cvEncodeImage(IMAGE_EXT, cap.cap.frame, comp),
+              NULL,
+              NULL,
+              abort_test);
 
     // Add comment information
-    EQ_RET_E(res, write_jpeg(file_name, cap, image), 1, NULL);
+    EQ_RET_EA(res, write_jpeg(&cap), 1, NULL, abort_test);
 
     // Increment counter
     count++;
   }
-  mq_close(image_q_inf.image_q);
+  LOG_MED("handle_jpeg_t thread exiting");
+  mq_close(cap.image_q_inf.image_q);
   return NULL;
 } // handle_jpeg_t()
 
@@ -144,28 +184,8 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
   int32_t rt_max_pri = 0;
   int32_t jpeg_policy = 0;
 
-  // Set the resolution
-  resolution.hres = hres;
-  resolution.vres = vres;
-
   // Try to create directory for storing images
   EQ_RET_E(res, create_dir(DIR_NAME), FAILURE, FAILURE);
-
-  // Try to create the queue
-  EQ_RET_E(image_q_inf.image_q,
-           mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
-           -1,
-           FAILURE);
-
-  // Get the message queue attributes
-  NOT_EQ_RET_E(res,
-               mq_getattr(image_q_inf.image_q, &image_q_inf.attr),
-               SUCCESS,
-               FAILURE)
-
-  // Get the uname string and display
-  EQ_RET_E(res, get_uname(uname_str, UNAME_MAX), FAILURE, FAILURE);
-  LOG_LOW("Using uname string: %s", uname_str);
 
   // Initialize the schedule attributes
   PT_NOT_EQ_EXIT(res, pthread_attr_init(&sched_attr), SUCCESS);
