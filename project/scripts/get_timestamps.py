@@ -17,10 +17,11 @@ if __name__ == "__main__":
 
     for _file in files:
         data = ""
-        with open(os.path.join(args.directory, _file), "r") as file_desc:
+        file_name = os.path.join(args.directory, _file)
+        with open(file_name, "r") as file_desc:
             data = file_desc.read()
 
         match = re.search(r"Timestamp:[\s]+(.*)", data)
 
         if match is not None:
-            print(match.groups()[0] + ",")
+            print(file_name + "," + match.groups()[0] + ",")
