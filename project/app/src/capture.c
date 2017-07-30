@@ -47,8 +47,8 @@
 // Timing info
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (100)
-#define PERIOD (35)
+#define NUM_FRAMES (2000)
+#define PERIOD (100)
 #define WARM_UP_FRAMES (40)
 
 // File info

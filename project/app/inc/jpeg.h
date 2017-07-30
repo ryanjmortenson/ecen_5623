@@ -8,7 +8,7 @@
 #define _PPM_H
 
 // Max timestamp length
-#define TIMESTAMP_MAX (40)
+#define TIMESTAMP_MAX (32)
 
 // Image Resolution information
 #define HRES (640)
