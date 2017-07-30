@@ -13,6 +13,9 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+// Max number for frames before unlinking old frames
+#define MAX_FRAMES (2000)
+
 typedef struct cap_info {
   IplImage * frame;
   struct timespec time;

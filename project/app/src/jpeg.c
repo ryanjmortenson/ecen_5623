@@ -26,7 +26,7 @@
 #define UNAME_MAX (255)
 #define DIR_NAME "capture_jpeg"
 #define IMAGE_EXT ".jpeg"
-
+#define FILE_NAME_FMT "%s/capture_%04d.jpeg"
 #define NUM_IMAGE_BUFS (4)
 
 // Flag for setting abort status
@@ -52,7 +52,7 @@ typedef struct {
   // Current image pointer
   CvMat * image;
 
-  // Captupre info object
+  // Capture info object
   cap_info_t cap;
 } jpeg_cap_t;
 
@@ -102,9 +102,10 @@ void * handle_jpeg_t(void * param)
   struct timespec diff;
   jpeg_cap_t cap;
   static const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
-  uint32_t res = 0;
+  int32_t res = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
+  char unlink_name[FILE_NAME_MAX];
 
   // Get the uname string and display
   EQ_RET_EA(res, get_uname(cap.uname_str, UNAME_MAX), FAILURE, NULL, abort_test);
@@ -144,8 +145,8 @@ void * handle_jpeg_t(void * param)
     cap.cur_buf = cap.image_buf[count % NUM_IMAGE_BUFS];
 
     // Create the file name to save data
-    snprintf(cap.file_name, FILE_NAME_MAX, "%s/capture_%04d.jpeg", DIR_NAME, count);
-    LOG_LOW("Using %s as file name for frame %d", cap.file_name, count);
+    snprintf(cap.file_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, count);
+    LOG_LOW("Using %s file name", cap.file_name);
     EQ_RET_EA(res,
               mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
               -1,
@@ -165,10 +166,20 @@ void * handle_jpeg_t(void * param)
     // Add comment information
     EQ_RET_EA(res, write_jpeg(&cap), 1, NULL, abort_test);
 
+    // Unlink old file
+    res = count - MAX_FRAMES;
+    if (res > -1)
+    {
+      LOG_FATAL("%d", res);
+      snprintf(unlink_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, res);
+      LOG_LOW("Unlinking %s", unlink_name);
+      EQ_RET_EA(res, unlink(unlink_name), -1, NULL, abort_test);
+    }
+
     // Increment counter
     count++;
   }
-  LOG_MED("handle_jpeg_t thread exiting");
+  LOG_HIGH("handle_jpeg_t thread exiting");
   mq_close(cap.image_q_inf.image_q);
   return NULL;
 } // handle_jpeg_t()
@@ -180,7 +191,7 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
   struct sched_param  jpeg_sched;
   pthread_attr_t sched_attr;
   pthread_t jpeg_thread;
-  uint32_t res = 0;
+  int32_t res = 0;
   int32_t rt_max_pri = 0;
   int32_t jpeg_policy = 0;
 

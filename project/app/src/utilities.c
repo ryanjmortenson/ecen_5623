@@ -17,7 +17,6 @@
 #include "project_defs.h"
 #include "utilities.h"
 
-
 uint32_t get_uname(char * uname_str, uint32_t count)
 {
   FUNC_ENTRY;

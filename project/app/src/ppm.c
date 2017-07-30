@@ -25,6 +25,7 @@
 #define FILE_NAME_MAX (255)
 #define UNAME_MAX (255)
 #define DIR_NAME "capture_ppm"
+#define FILE_NAME_FMT "%s/capture_%04d.ppm"
 
 // Image info
 #define MAX_INTENSITY_STR "255\n"
@@ -97,7 +98,7 @@ uint32_t write_ppm(uint32_t fd, ppm_cap_t * ppm)
   FUNC_ENTRY;
   CHECK_NULL(ppm);
 
-  uint32_t res = 0;
+  int32_t res = 0;
 
   LOG_LOW("Writing ppm image to fd: %d", fd);
   // Write the header
@@ -176,10 +177,11 @@ void * handle_ppm_t(void * param)
   FUNC_ENTRY;
   struct timespec diff;
   ppm_cap_t cap;
-  uint32_t res = 0;
+  int32_t res = 0;
   uint32_t fd = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
+  char unlink_name[FILE_NAME_MAX];
 
   // Set the resolution
   cap.resolution.hres = HRES;
@@ -215,8 +217,8 @@ void * handle_ppm_t(void * param)
     DISPLAY_TIMESTAMP;
 
     // Create the file name to save data
-    snprintf(cap.file_name, FILE_NAME_MAX, "%s/capture_%04d.ppm", DIR_NAME, count);
-    LOG_LOW("Using %s as file name for frame %d", cap.file_name, count);
+    snprintf(cap.file_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, count);
+    LOG_LOW("Using %s file name", cap.file_name);
     EQ_RET_EA(res,
               mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
               -1,
@@ -254,10 +256,19 @@ void * handle_ppm_t(void * param)
     // Close file properly
     EQ_RET_EA(res, close(fd), -1, NULL, abort_test);
 
+    // Unlink old file
+    res = count - MAX_FRAMES;
+    if (res > -1)
+    {
+      snprintf(unlink_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, res);
+      LOG_LOW("Unlinking %s", unlink_name);
+      EQ_RET_EA(res, unlink(unlink_name), -1, NULL, abort_test);
+    }
+
     // Increment counter
     count++;
   }
-  LOG_MED("handle_ppm_t thread exiting");
+  LOG_HIGH("handle_ppm_t thread exiting");
   mq_close(cap.image_q_inf.image_q);
   return NULL;
 } // handle_ppm_t()
@@ -269,7 +280,7 @@ uint32_t ppm_init()
   struct sched_param  ppm_sched;
   pthread_attr_t sched_attr;
   pthread_t ppm_thread;
-  uint32_t res = 0;
+  int32_t res = 0;
   int32_t rt_max_pri = 0;
   int32_t ppm_policy = 0;
 

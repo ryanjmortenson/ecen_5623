@@ -47,7 +47,7 @@
 // Timing info
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (2000)
+#define NUM_FRAMES (20)
 #define PERIOD (100)
 #define WARM_UP_FRAMES (10)
 
@@ -119,10 +119,11 @@ void * cap_func(void * param)
     cur_cap_info->time = time;
 
     // Try to send the cap info via messaqe queue
-    NOT_EQ_RET_E(res,
+    NOT_EQ_RET_EA(res,
                  mq_send(cap->image_queue, (char *)cur_cap_info, sizeof(*cur_cap_info), 0),
                  SUCCESS,
-                 NULL);
+                 NULL,
+                 abort_test);
 
     // Display the frame
     DISPLAY_FRAME(cap, cur_cap_info->frame);
@@ -131,7 +132,7 @@ void * cap_func(void * param)
     sem_post(cap->stop);
     count++;
   }
-
+  LOG_HIGH("cap_func thread exiting");
   return NULL;
 } // cap_func()
 
@@ -282,7 +283,7 @@ int capture()
   PT_NOT_EQ_EXIT(res,
                  pthread_join(cap_thread, NULL),
                  SUCCESS);
-  LOG_HIGH("capture thread joined");
+  LOG_MED("cap_func thread joined");
 
   // Destroy capture and window
   cvReleaseCapture(&cap.capture);
@@ -296,5 +297,8 @@ int capture()
 
   // Destroy log
   log_destroy();
+
+  // Log capture thread exiting
+  LOG_HIGH("capture function exiting");
   return 0;
 } // capture()
