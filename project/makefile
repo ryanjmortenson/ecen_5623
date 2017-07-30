@@ -35,21 +35,8 @@ MAPS=$(X86_OUT_DIR)/$(MAP_FILE) \
 # Call sub make files to build dependencies for each target
 -include sources.mk
 
-# Set define of project 2 as default
-ifeq ($(EXERCISE),)
-	EXERCISE=4
-else
-	EXERCISE=$(EXERCISE)
-endif
-
-ifeq ($(PROBLEM),)
-	PROBLEM=5
-else
-	PROBLEM=$(PROBLEM)
-endif
-
 # Project output file names
-EXERCISE_OUT_FILE=exercise$(EXERCISE)problem$(PROBLEM).out
+EXERCISE_OUT_FILE=exercise6.out
 LIB_OUT_FILE=lib$(EXERCISE_FILE)$(EXERCISE).a
 
 # Set CFLAGS used by every build type

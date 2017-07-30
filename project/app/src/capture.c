@@ -48,7 +48,7 @@
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
 #define NUM_FRAMES (100)
-#define PERIOD (100)
+#define PERIOD (35)
 #define WARM_UP_FRAMES (40)
 
 // File info
@@ -103,11 +103,11 @@ void * cap_func(void * param)
   // Loop capturing frames and displaying
   while(!abort_test)
   {
-    // Get the time
-    clock_gettime(CLOCK_REALTIME, &time);
-
     // Wait for start signal
     sem_wait(cap->start);
+
+    // Get the time
+    clock_gettime(CLOCK_REALTIME, &time);
 
     // Get the current cap info
     cur_cap_info = &cap_info[count % CAP_BUF_SIZE];

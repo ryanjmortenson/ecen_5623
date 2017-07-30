@@ -25,6 +25,7 @@
 #define FILE_NAME_MAX (255)
 #define UNAME_MAX (255)
 #define DIR_NAME "capture_jpeg"
+#define IMAGE_EXT ".jpeg"
 
 // Image buffer for current frame
 static char image_buf[IMAGE_NUM_BYTES];
@@ -88,7 +89,6 @@ uint32_t write_jpeg(char * file_name, cap_info_t cap, CvMat * image)
 
   // Read it all into a buffer
   EQ_RET_E(res, read(fd, image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
-  LOG_FATAL("Read %d bytes", res);
 
   // Close file properly
   EQ_RET_E(res, close(fd), -1, FAILURE);
@@ -128,7 +128,7 @@ void * handle_jpeg_t(void * param)
     START_TIME;
 
     // Encode the frame into JPEG
-    EQ_RET_E(image, cvEncodeImage(".jpeg", cap.frame, comp), NULL, NULL);
+    EQ_RET_E(image, cvEncodeImage(IMAGE_EXT, cap.frame, comp), NULL, NULL);
 
     // Add comment information
     EQ_RET_E(res, write_jpeg(file_name, cap, image), 1, NULL);
