@@ -49,7 +49,7 @@
 #define MICROSECONDS_PER_MILLISECOND (1000)
 #define NUM_FRAMES (2000)
 #define PERIOD (100)
-#define WARM_UP_FRAMES (40)
+#define WARM_UP_FRAMES (10)
 
 // File info
 #define DIR_NAME_MAX (255)
@@ -143,7 +143,9 @@ int capture()
   sem_t start;
   sem_t stop;
   cap_t cap;
+#ifdef WARM_UP
   IplImage * frame;
+#endif
   int32_t cap_policy = 0;
   int32_t res = 0;
   int32_t rt_max_pri = 0;
@@ -234,6 +236,9 @@ int capture()
   for (uint8_t frames = 0; frames < WARM_UP_FRAMES; frames++)
   {
     EQ_RET_E(frame, cvQueryFrame(cap.capture), NULL, FAILURE);
+    cvShowImage(WINDOWNAME, frame);
+    cvWaitKey(1);
+    usleep(MICROSECONDS_PER_SECOND);
   }
 #endif // WARM_UP
 
