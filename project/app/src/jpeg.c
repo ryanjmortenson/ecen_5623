@@ -32,19 +32,19 @@
 // Flag for setting abort status
 extern uint8_t abort_test;
 
+// Location to store JPEG data and pass to TCP client service.  Using multiple buffering
+// for safety of data without using MUTEX.
+static char image_buf[NUM_IMAGE_BUFS][IMAGE_NUM_BYTES];
+
 // Struct of information for the thread
 typedef struct {
   // Image buffer for current frame
-  char image_buf[NUM_IMAGE_BUFS][IMAGE_NUM_BYTES];
   char * cur_buf;
 
   // Hold the uname str
   char uname_str[UNAME_MAX];
   uint16_t uname_len;
   uint16_t comment_len;
-
-  // Message queue
-  image_q_inf_t image_q_inf;
 
   // Filename
   char file_name[FILE_NAME_MAX];
@@ -100,8 +100,9 @@ void * handle_jpeg_t(void * param)
 {
   FUNC_ENTRY;
   struct timespec diff;
+  image_q_inf_t image_q_inf;
   jpeg_cap_t cap;
-  static const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
+  const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
   int32_t res = 0;
   uint32_t count = 0;
   uint8_t timer = profiler_init();
@@ -120,7 +121,7 @@ void * handle_jpeg_t(void * param)
   cap.comment_len = (cap.comment_len << 8 | cap.comment_len >> 8);
 
   // Try to create the queue
-  EQ_RET_EA(cap.image_q_inf.image_q,
+  EQ_RET_EA(image_q_inf.image_q,
             mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
             -1,
             NULL,
@@ -128,32 +129,32 @@ void * handle_jpeg_t(void * param)
 
   // Get the message queue attributes
   NOT_EQ_RET_EA(res,
-                mq_getattr(cap.image_q_inf.image_q, &cap.image_q_inf.attr),
+                mq_getattr(image_q_inf.image_q, &image_q_inf.attr),
                 SUCCESS,
                 NULL,
                 abort_test)
 
   while(!abort_test)
   {
+    // Get the current buffer from the multi buffer for processing image
+    cap.cur_buf = image_buf[count % NUM_IMAGE_BUFS];
+
     // Get the time after the loop is done
     GET_TIME;
 
     // Display the timestamp
     DISPLAY_TIMESTAMP;
 
-    // Get the current buffer for processing
-    cap.cur_buf = cap.image_buf[count % NUM_IMAGE_BUFS];
-
     // Create the file name to save data
     snprintf(cap.file_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, count);
     LOG_LOW("Using %s file name", cap.file_name);
     EQ_RET_EA(res,
-              mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
+              mq_receive(image_q_inf.image_q, (char *)&cap.cap, image_q_inf.attr.mq_msgsize, NULL),
               -1,
               NULL,
               abort_test);
 
-    // Start the timer after the message has been capture to write to disk
+    // Start the timer for encoding/writing the image
     START_TIME;
 
     // Encode the frame into JPEG
@@ -166,7 +167,7 @@ void * handle_jpeg_t(void * param)
     // Add comment information
     EQ_RET_EA(res, write_jpeg(&cap), 1, NULL, abort_test);
 
-    // Unlink old file
+    // Unlink old file if the number for frames is greater than the max frame setting
     res = count - MAX_FRAMES;
     if (res > -1)
     {
@@ -180,7 +181,7 @@ void * handle_jpeg_t(void * param)
     count++;
   }
   LOG_HIGH("handle_jpeg_t thread exiting");
-  mq_close(cap.image_q_inf.image_q);
+  mq_close(image_q_inf.image_q);
   return NULL;
 } // handle_jpeg_t()
 

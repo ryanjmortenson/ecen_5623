@@ -29,35 +29,31 @@
 
 // Image info
 #define MAX_INTENSITY_STR "255\n"
+#define MAX_INTENSITY_STR_LEN (4)
 #define P6_HEADER "P6\n640 480\n"
+#define P6_HEADER_LEN (11)
 #define MAX_INTENSITY (255)
 #define MAX_INTENSITY_FLOAT (255.0f)
+
+// Image buffer for current frame used to hold converted PPM file
+static char image_buf[IMAGE_NUM_BYTES];
 
 // Abort flag
 extern uint8_t abort_test;
 
 // PPM capture info
 typedef struct {
-  // Image buffer for current frame
-  char image_buf[IMAGE_NUM_BYTES];
-
   // Hold the uname str
   char uname_str[UNAME_MAX];
 
-  // Message queue
-  image_q_inf_t image_q_inf;
+  // Length of uname string
+  uint8_t uname_len;
 
   // Resolution info
   resolution_t resolution;
 
   // Timestamp to place in image
   char timestamp[TIMESTAMP_MAX];
-
-  // Start of header
-  char * header;
-
-  // Max color value
-  char * max_val;
 
   // Captupre info object
   cap_info_t cap;
@@ -103,7 +99,7 @@ uint32_t write_ppm(uint32_t fd, ppm_cap_t * ppm)
   LOG_LOW("Writing ppm image to fd: %d", fd);
   // Write the header
   EQ_RET_E(res,
-           write(fd, (void *) ppm->header, strlen(ppm->header)),
+           write(fd, (void *) P6_HEADER, P6_HEADER_LEN),
            -1,
            FAILURE);
 
@@ -115,18 +111,18 @@ uint32_t write_ppm(uint32_t fd, ppm_cap_t * ppm)
 
   // Write the uname string comment
   EQ_RET_E(res,
-           write(fd, (void *) ppm->uname_str, strlen(ppm->uname_str)),
+           write(fd, (void *) ppm->uname_str, ppm->uname_len),
            -1,
            FAILURE);
 
   // Write the max val
   EQ_RET_E(res,
-           write(fd, (void *) ppm->max_val, strlen(ppm->max_val)),
+           write(fd, (void *) MAX_INTENSITY_STR, MAX_INTENSITY_STR_LEN),
            -1,
            FAILURE);
 
   // Write the color data
-  EQ_RET_E(res, write(fd, (void *) ppm->image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
+  EQ_RET_E(res, write(fd, (void *)image_buf, IMAGE_NUM_BYTES), -1, FAILURE);
 
   // Success
   return SUCCESS;
@@ -159,9 +155,9 @@ uint32_t create_image_buf(ppm_cap_t * ppm, colors_t * data)
       image_buf[count + 2] = gamma_tf(data->red);
 #else // GAMMA_FUNCTION
       // Write the raw intensity
-      ppm->image_buf[count]     = (data->red);
-      ppm->image_buf[count + 1] = (data->green);
-      ppm->image_buf[count + 2] = (data->blue);
+      image_buf[count]     = (data->red);
+      image_buf[count + 1] = (data->green);
+      image_buf[count + 2] = (data->blue);
 #endif // GAMMA_FUNCTION
       count += 3;
       data++;
@@ -182,13 +178,14 @@ void * handle_ppm_t(void * param)
   uint32_t count = 0;
   uint8_t timer = profiler_init();
   char unlink_name[FILE_NAME_MAX];
+  image_q_inf_t image_q_inf;
 
   // Set the resolution
   cap.resolution.hres = HRES;
   cap.resolution.vres = VRES;
 
   // Try to create the queue
-  EQ_RET_EA(cap.image_q_inf.image_q,
+  EQ_RET_EA(image_q_inf.image_q,
             mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, S_IRWXU, NULL),
             -1,
             NULL,
@@ -196,7 +193,7 @@ void * handle_ppm_t(void * param)
 
   // Get the message queue attributes
   NOT_EQ_RET_EA(res,
-                mq_getattr(cap.image_q_inf.image_q, &cap.image_q_inf.attr),
+                mq_getattr(image_q_inf.image_q, &image_q_inf.attr),
                 SUCCESS,
                 NULL,
                 abort_test)
@@ -204,9 +201,7 @@ void * handle_ppm_t(void * param)
   // Get the uname string and display
   EQ_RET_EA(res, get_uname(cap.uname_str, UNAME_MAX), FAILURE, NULL, abort_test);
   LOG_LOW("Using uname string: %s", cap.uname_str);
-
-  cap.header = P6_HEADER;
-  cap.max_val = MAX_INTENSITY_STR;
+  cap.uname_len = strlen(cap.uname_str);
 
   while(!abort_test)
   {
@@ -220,7 +215,7 @@ void * handle_ppm_t(void * param)
     snprintf(cap.file_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, count);
     LOG_LOW("Using %s file name", cap.file_name);
     EQ_RET_EA(res,
-              mq_receive(cap.image_q_inf.image_q, (char *)&cap.cap, cap.image_q_inf.attr.mq_msgsize, NULL),
+              mq_receive(image_q_inf.image_q, (char *)&cap.cap, image_q_inf.attr.mq_msgsize, NULL),
               -1,
               NULL,
               abort_test);
@@ -256,7 +251,7 @@ void * handle_ppm_t(void * param)
     // Close file properly
     EQ_RET_EA(res, close(fd), -1, NULL, abort_test);
 
-    // Unlink old file
+    // Unlink old file if the number for frames is greater than the max frame setting
     res = count - MAX_FRAMES;
     if (res > -1)
     {
@@ -269,7 +264,7 @@ void * handle_ppm_t(void * param)
     count++;
   }
   LOG_HIGH("handle_ppm_t thread exiting");
-  mq_close(cap.image_q_inf.image_q);
+  mq_close(image_q_inf.image_q);
   return NULL;
 } // handle_ppm_t()
 

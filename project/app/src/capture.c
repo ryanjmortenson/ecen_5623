@@ -47,17 +47,17 @@
 // Timing info
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (20)
-#define PERIOD (100)
+#define NUM_FRAMES (200)
+#define PERIOD (34)
 #define WARM_UP_FRAMES (10)
 
 // File info
 #define DIR_NAME_MAX (255)
 #define FILE_NAME_MAX DIR_NAME_MAX
 #define UNAME_MAX (256)
-#define TIMING_BUFFER (100)
+#define TIMING_BUFFER (72)
 
-
+// Helpful macros
 #define START_CAPTURE(cap, frame) EQ_RET_E(frame,                      \
                                            cvQueryFrame(cap->capture), \
                                            NULL,                       \
@@ -66,7 +66,7 @@
 #define DISPLAY_FRAME(cap, frame) cvShowImage(WINDOWNAME, frame); \
                                   cvWaitKey(1)
 
-// Flag for killing thread
+// Flag for stopping application.  All services extern this variable.
 uint32_t abort_test = 0;
 
 // Ping Pong buffer for cap info
@@ -90,10 +90,12 @@ void * cap_func(void * param)
   FUNC_ENTRY;
 
   struct timespec time;
+  struct timespec diff;
   cap_t * cap = (cap_t *)param;
   cap_info_t * cur_cap_info;
   uint32_t count = 0;
   uint32_t res = 0;
+  uint8_t timer = profiler_init();
 
   // Check for null pointer
   if (NULL == param)
@@ -114,8 +116,12 @@ void * cap_func(void * param)
     // Get the current cap info
     cur_cap_info = &cap_info[count % CAP_BUF_SIZE];
 
+    START_TIME;
     // Capture the frame and add the timestamp to the struct
     START_CAPTURE(cap, cur_cap_info->frame);
+
+    GET_TIME;
+    DISPLAY_TIMESTAMP;
     cur_cap_info->time = time;
 
     // Try to send the cap info via messaqe queue
