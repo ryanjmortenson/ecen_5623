@@ -56,7 +56,7 @@
 // File info
 #define DIR_NAME_MAX (255)
 #define UNAME_MAX (256)
-#define TIMING_BUFFER (72)
+#define TIMING_BUFFER (125)
 
 #define DISPLAY_FRAME(cap, frame) cvShowImage(WINDOWNAME, frame); \
                                   cvWaitKey(1)

@@ -56,6 +56,15 @@ void * server_service(void * param)
                 SUCCESS,
                 NULL,
                 abort_test)
+  // Clear out old messages in queue
+  LOG_HIGH("Clearing out %d messages", attr.mq_curmsgs);
+  for (uint32_t i = 0; i < attr.mq_curmsgs; i++)
+  {
+    EQ_RET_E(res,
+             mq_receive(server_queue, (char *)&server_msg, attr.mq_msgsize, NULL),
+             -1,
+             NULL);
+  }
 
   // Create a socket file descriptor
   EQ_RET_E(sockfd, socket(AF_INET, SOCK_STREAM, 0), -1, NULL);
