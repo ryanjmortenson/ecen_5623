@@ -9,6 +9,7 @@
 
 // Max timestamp length
 #define TIMESTAMP_MAX (32)
+#define DIR_NAME "capture_jpeg"
 
 // Image Resolution information
 #define HRES (640)

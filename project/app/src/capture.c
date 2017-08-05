@@ -25,8 +25,10 @@
 #include "project_defs.h"
 #include "utilities.h"
 
+// Use either JPEG or PPM to save files
 #ifdef JPEG_COMPRESSION
 #include "jpeg.h"
+#include "server.h"
 #else
 #include "ppm.h"
 #endif
@@ -47,21 +49,14 @@
 // Timing info
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
-#define NUM_FRAMES (200)
-#define PERIOD (34)
+#define NUM_FRAMES (20)
+#define PERIOD (100)
 #define WARM_UP_FRAMES (10)
 
 // File info
 #define DIR_NAME_MAX (255)
-#define FILE_NAME_MAX DIR_NAME_MAX
 #define UNAME_MAX (256)
 #define TIMING_BUFFER (72)
-
-// Helpful macros
-#define START_CAPTURE(cap, frame) EQ_RET_E(frame,                      \
-                                           cvQueryFrame(cap->capture), \
-                                           NULL,                       \
-                                           NULL)
 
 #define DISPLAY_FRAME(cap, frame) cvShowImage(WINDOWNAME, frame); \
                                   cvWaitKey(1)
@@ -75,10 +70,13 @@ static cap_info_t cap_info[CAP_BUF_SIZE];
 // Capture structure to pass into pthread
 typedef struct cap {
   CvCapture * capture;
-  sem_t * start;
-  sem_t * stop;
+  sem_t start;
+  sem_t stop;
   mqd_t image_queue;
 } cap_t;
+
+// CApture information
+static cap_t cap;
 
 /*!
 * @brief Spins off a thread to do capture
@@ -91,24 +89,19 @@ void * cap_service(void * param)
 
   struct timespec time;
   struct timespec diff;
-  cap_t * cap = (cap_t *)param;
   cap_info_t * cur_cap_info;
   uint32_t count = 0;
   uint32_t res = 0;
   uint8_t timer = profiler_init();
 
-  // Check for null pointer
-  if (NULL == param)
-  {
-    LOG_ERROR("param parameter was NULL");
-    return NULL;
-  }
-
   // Loop capturing frames and displaying
   while(!abort_test)
   {
+    GET_TIME;
+    DISPLAY_TIMESTAMP;
     // Wait for start signal
-    sem_wait(cap->start);
+    sem_wait(&cap.start);
+    START_TIME;
 
     // Get the time
     clock_gettime(CLOCK_REALTIME, &time);
@@ -116,26 +109,24 @@ void * cap_service(void * param)
     // Get the current cap info
     cur_cap_info = &cap_info[count % CAP_BUF_SIZE];
 
-    START_TIME;
-    // Capture the frame and add the timestamp to the struct
-    START_CAPTURE(cap, cur_cap_info->frame);
+    EQ_RET_E(cur_cap_info->frame, cvQueryFrame(cap.capture), NULL, NULL);
 
-    GET_TIME;
-    DISPLAY_TIMESTAMP;
     cur_cap_info->time = time;
 
     // Try to send the cap info via messaqe queue
     NOT_EQ_RET_EA(res,
-                 mq_send(cap->image_queue, (char *)cur_cap_info, sizeof(*cur_cap_info), 0),
+                 mq_send(cap.image_queue, (char *)cur_cap_info, sizeof(*cur_cap_info), 0),
                  SUCCESS,
                  NULL,
                  abort_test);
 
-    // Display the frame
-    DISPLAY_FRAME(cap, cur_cap_info->frame);
+#if 0
+    cvShowImage(WINDOWNAME, cur_cap_info->frame);
+    cvWaitKey(1);
+#endif
 
     // Post done
-    sem_post(cap->stop);
+    sem_post(&cap.stop);
     count++;
   }
   LOG_HIGH("cap_service thread exiting");
@@ -149,9 +140,6 @@ int sched_service()
   struct timespec diff;
   pthread_t cap_thread;
   pthread_attr_t sched_attr;
-  sem_t start;
-  sem_t stop;
-  cap_t cap;
 #ifdef WARM_UP
   IplImage * frame;
 #endif
@@ -179,10 +167,8 @@ int sched_service()
             -1);
 
   // Semaphore for timing
-  PT_NOT_EQ_EXIT(res, sem_init(&start, 0, 0), SUCCESS);
-  PT_NOT_EQ_EXIT(res, sem_init(&stop, 0, 0), SUCCESS);
-  cap.start = &start;
-  cap.stop = &stop;
+  PT_NOT_EQ_EXIT(res, sem_init(&cap.start, 0, 0), SUCCESS);
+  PT_NOT_EQ_EXIT(res, sem_init(&cap.stop, 0, 0), SUCCESS);
 
   // Create a capture object and set values
   EQ_EXIT_E(cap.capture, (CvCapture *)cvCreateCameraCapture(DEVICE_NUMBER), NULL);
@@ -220,7 +206,7 @@ int sched_service()
 
   // Create pthread
   PT_NOT_EQ_EXIT(res,
-                 pthread_create(&cap_thread, &sched_attr, cap_service, (void *)&cap),
+                 pthread_create(&cap_thread, &sched_attr, cap_service, NULL),
                  SUCCESS);
 
   // Get the scheduler parameters to display
@@ -232,10 +218,12 @@ int sched_service()
            cap_sched.sched_priority);
 
 #ifdef JPEG_COMPRESSION
-  // Try setting up the JPEG thread
+  // Try setting up the JPEG service
   NOT_EQ_EXIT_E(res, jpeg_init(), SUCCESS);
+  // Try setting up the server service
+  NOT_EQ_EXIT_E(res, server_init(), SUCCESS);
 #else
-  // Try setting up the ppm thread
+  // Try setting up the ppm service
   NOT_EQ_EXIT_E(res, ppm_init(), SUCCESS);
 #endif
 
@@ -254,36 +242,45 @@ int sched_service()
   // Loop captures frames to get stats
   for (uint32_t frames = 0; frames < NUM_FRAMES; frames++)
   {
-    // Post semaphore for capture
-    sem_post(cap.start);
-
     // Start the timer
     START_TIME;
 
-    // Sleep for the period of a frame
-    usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
-
-    if (!abort_test)
-    {
-      // Wait for frame to be captured
-      sem_wait(cap.stop);
-    }
-    else
-    {
-      break;
-    }
+    // Post semaphore for capture
+    sem_post(&cap.start);
 
     // Get the time
     GET_TIME;
 
     // Display the time
     DISPLAY_TIMESTAMP;
+
+    // Sleep for the period of a frame
+    usleep(MICROSECONDS_PER_MILLISECOND * PERIOD - TIMING_BUFFER);
+
+    // Start the timer
+    START_TIME;
+
+    if (!abort_test)
+    {
+      // Wait for frame to be captured
+      sem_wait(&cap.stop);
+    }
+    else
+    {
+      break;
+    }
+    // Get the time
+    GET_TIME;
+
+    // Display the time
+    DISPLAY_TIMESTAMP;
+
   }
 
   // Set the abort flag then allow the thread to exit
-  sem_post(cap.start);
+  sem_post(&cap.start);
   abort_test = 1;
-  sem_post(cap.stop);
+  sem_post(&cap.stop);
 
   // Wait for test thread to join
   PT_NOT_EQ_EXIT(res,

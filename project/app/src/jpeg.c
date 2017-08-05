@@ -15,16 +15,15 @@
 #include <unistd.h>
 
 #include "capture.h"
+#include "jpeg.h"
 #include "log.h"
 #include "project_defs.h"
 #include "profiler.h"
-#include "jpeg.h"
+#include "server.h"
 #include "utilities.h"
 
 // File storage info
-#define FILE_NAME_MAX (255)
 #define UNAME_MAX (255)
-#define DIR_NAME "capture_jpeg"
 #define IMAGE_EXT ".jpeg"
 #define FILE_NAME_FMT "%s/capture_%04d.jpeg"
 #define NUM_IMAGE_BUFS (4)
@@ -32,14 +31,16 @@
 // Flag for setting abort status
 extern uint8_t abort_test;
 
+// Server accepting images to send
+
 // Location to store JPEG data and pass to TCP client service.  Using multiple buffering
 // for safety of data without using MUTEX.
-static char image_buf[NUM_IMAGE_BUFS][IMAGE_NUM_BYTES];
+static uint8_t image_buf[NUM_IMAGE_BUFS][IMAGE_NUM_BYTES];
 
 // Struct of information for the thread
 typedef struct {
   // Image buffer for current frame
-  char * cur_buf;
+  uint8_t * cur_buf;
 
   // Hold the uname str
   char uname_str[UNAME_MAX];
@@ -93,7 +94,7 @@ uint32_t write_jpeg(jpeg_cap_t * cap)
   // Close file properly
   EQ_RET_E(res, close(fd), -1, FAILURE);
 
-  return SUCCESS;
+  return cur_loc;
 }
 
 void * jpeg_service(void * param)
@@ -102,6 +103,8 @@ void * jpeg_service(void * param)
   struct timespec diff;
   image_q_inf_t image_q_inf;
   jpeg_cap_t cap;
+  mqd_t server_queue;
+  server_info_t server_msg;
   const int32_t comp[2] = {CV_IMWRITE_JPEG_QUALITY, 50};
   int32_t res = 0;
   uint32_t count = 0;
@@ -127,6 +130,12 @@ void * jpeg_service(void * param)
             NULL,
             abort_test);
 
+  // Try to create the queue
+  EQ_RET_E(server_queue,
+           mq_open(SERVER_QUEUE_NAME, O_NONBLOCK | O_WRONLY | O_CREAT, S_IRWXU, NULL),
+           -1,
+           NULL);
+
   // Get the message queue attributes
   NOT_EQ_RET_EA(res,
                 mq_getattr(image_q_inf.image_q, &image_q_inf.attr),
@@ -148,6 +157,8 @@ void * jpeg_service(void * param)
     // Create the file name to save data
     snprintf(cap.file_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, count);
     LOG_LOW("Using %s file name", cap.file_name);
+    server_msg.file_name_len = strlen(cap.file_name);
+    memcpy(server_msg.file_name, cap.file_name, server_msg.file_name_len);
     EQ_RET_EA(res,
               mq_receive(image_q_inf.image_q, (char *)&cap.cap, image_q_inf.attr.mq_msgsize, NULL),
               -1,
@@ -167,6 +178,12 @@ void * jpeg_service(void * param)
     // Add comment information
     EQ_RET_EA(res, write_jpeg(&cap), 1, NULL, abort_test);
 
+    server_msg.image_buf_len = res;
+    server_msg.image_buf = cap.cur_buf;
+
+    // Try to send the cap info via messaqe queue
+    mq_send(server_queue, (char *)&server_msg, sizeof(server_msg), 0),
+
     // Unlink old file if the number for frames is greater than the max frame setting
     res = count - MAX_FRAMES;
     if (res > -1)
@@ -182,6 +199,7 @@ void * jpeg_service(void * param)
   }
   LOG_HIGH("jpeg_service thread exiting");
   mq_close(image_q_inf.image_q);
+  mq_close(server_queue);
   return NULL;
 } // jpeg_service()
 

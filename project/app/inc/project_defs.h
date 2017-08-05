@@ -12,6 +12,9 @@ typedef enum status {
   FAILURE
 } status_t;
 
+// Max file name
+#define FILE_NAME_MAX (255)
+
 // Helpful Macros
 #define START_TIME start_timer(timer)
 #define DISPLAY_TIMESTAMP LOG_FATAL("sec: %d, millisec: %f", \

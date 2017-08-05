@@ -13,7 +13,7 @@
 * @param sockfd pointer to a int32_t to hold socket fd after creation
 * @return SUCCESS/FAILURE
 */
-uint32_t client_socket_init(int32_t * sockfd, char * add, uint32_t port);
+uint32_t client_init();
 
 /*!
 * @brief Shutdown the client socket

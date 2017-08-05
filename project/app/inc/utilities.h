@@ -7,6 +7,7 @@
 #ifndef _UTILITIES_H
 #define _UTILITIES_H
 
+// File permissions used for saving files and creating directories
 #define FILE_PERM (S_IRWXU | S_IRWXO | S_IRWXG)
 
 uint32_t get_uname(char * uname_str, uint32_t count);
