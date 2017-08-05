@@ -96,7 +96,7 @@ uint32_t write_jpeg(jpeg_cap_t * cap)
   return SUCCESS;
 }
 
-void * handle_jpeg_t(void * param)
+void * jpeg_service(void * param)
 {
   FUNC_ENTRY;
   struct timespec diff;
@@ -180,12 +180,12 @@ void * handle_jpeg_t(void * param)
     // Increment counter
     count++;
   }
-  LOG_HIGH("handle_jpeg_t thread exiting");
+  LOG_HIGH("jpeg_service thread exiting");
   mq_close(image_q_inf.image_q);
   return NULL;
-} // handle_jpeg_t()
+} // jpeg_service()
 
-uint32_t jpeg_init(uint32_t hres, uint32_t vres)
+uint32_t jpeg_init()
 {
   FUNC_ENTRY;
   struct sched_param sched;
@@ -223,7 +223,7 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
                 FAILURE);
   // Create pthread
   PT_NOT_EQ_RET(res,
-                pthread_create(&jpeg_thread, &sched_attr, handle_jpeg_t, NULL),
+                pthread_create(&jpeg_thread, &sched_attr, jpeg_service, NULL),
                 SUCCESS,
                 FAILURE);
 
@@ -232,7 +232,7 @@ uint32_t jpeg_init(uint32_t hres, uint32_t vres)
                 pthread_getschedparam(jpeg_thread, &jpeg_policy, &jpeg_sched),
                 SUCCESS,
                 FAILURE);
-  LOG_HIGH("handle_jpeg_t policy: %d, priority: %d",
+  LOG_HIGH("jpeg_service policy: %d, priority: %d",
            jpeg_policy,
            jpeg_sched.sched_priority);
   return SUCCESS;

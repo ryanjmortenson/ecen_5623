@@ -168,7 +168,7 @@ uint32_t create_image_buf(ppm_cap_t * ppm, colors_t * data)
   return SUCCESS;
 } // create_image_buf()
 
-void * handle_ppm_t(void * param)
+void * ppm_service(void * param)
 {
   FUNC_ENTRY;
   struct timespec diff;
@@ -263,10 +263,10 @@ void * handle_ppm_t(void * param)
     // Increment counter
     count++;
   }
-  LOG_HIGH("handle_ppm_t thread exiting");
+  LOG_HIGH("ppm_service thread exiting");
   mq_close(image_q_inf.image_q);
   return NULL;
-} // handle_ppm_t()
+} // ppm_service()
 
 uint32_t ppm_init()
 {
@@ -306,7 +306,7 @@ uint32_t ppm_init()
                 FAILURE);
   // Create pthread
   PT_NOT_EQ_RET(res,
-                pthread_create(&ppm_thread, &sched_attr, handle_ppm_t, NULL),
+                pthread_create(&ppm_thread, &sched_attr, ppm_service, NULL),
                 SUCCESS,
                 FAILURE);
 
@@ -315,7 +315,7 @@ uint32_t ppm_init()
                 pthread_getschedparam(ppm_thread, &ppm_policy, &ppm_sched),
                 SUCCESS,
                 FAILURE);
-  LOG_HIGH("handle_ppm_t policy: %d, priority: %d",
+  LOG_HIGH("ppm_service policy: %d, priority: %d",
            ppm_policy,
            ppm_sched.sched_priority);
   return SUCCESS;

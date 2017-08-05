@@ -39,6 +39,6 @@ typedef struct {
 * @brief Execute exercise 4 problem 5
 * @return 0
 */
-int capture();
+int sched_service();
 
 #endif /* __CAPTURE_H__ */

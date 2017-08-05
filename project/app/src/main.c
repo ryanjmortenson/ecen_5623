@@ -9,5 +9,5 @@
 
 int main()
 {
-  return capture();
+  return sched_service();
 }

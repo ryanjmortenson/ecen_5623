@@ -85,7 +85,7 @@ typedef struct cap {
 * @param param void pointer to params
 * @return NULL
 */
-void * cap_func(void * param)
+void * cap_service(void * param)
 {
   FUNC_ENTRY;
 
@@ -138,11 +138,11 @@ void * cap_func(void * param)
     sem_post(cap->stop);
     count++;
   }
-  LOG_HIGH("cap_func thread exiting");
+  LOG_HIGH("cap_service thread exiting");
   return NULL;
-} // cap_func()
+} // cap_service()
 
-int capture()
+int sched_service()
 {
   struct sched_param sched;
   struct sched_param cap_sched;
@@ -220,7 +220,7 @@ int capture()
 
   // Create pthread
   PT_NOT_EQ_EXIT(res,
-                 pthread_create(&cap_thread, &sched_attr, cap_func, (void *)&cap),
+                 pthread_create(&cap_thread, &sched_attr, cap_service, (void *)&cap),
                  SUCCESS);
 
   // Get the scheduler parameters to display
@@ -289,7 +289,7 @@ int capture()
   PT_NOT_EQ_EXIT(res,
                  pthread_join(cap_thread, NULL),
                  SUCCESS);
-  LOG_MED("cap_func thread joined");
+  LOG_MED("cap_service thread joined");
 
   // Destroy capture and window
   cvReleaseCapture(&cap.capture);
@@ -305,6 +305,6 @@ int capture()
   log_destroy();
 
   // Log capture thread exiting
-  LOG_HIGH("capture function exiting");
+  LOG_HIGH("sched_service exiting");
   return 0;
 } // capture()
