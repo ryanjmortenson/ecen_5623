@@ -24,7 +24,7 @@
 #include "utilities.h"
 
 #define SERVER_PORT (12345)
-#define ADDRESS "127.0.0.1"
+#define ADDRESS "10.0.0.29"
 
 uint32_t client_socket_dest(int32_t sockfd)
 {
@@ -50,6 +50,7 @@ void * client_service(void * param)
   int32_t name_len = 0;
   int32_t buf_len = 0;
   int32_t fd = 0;
+  int32_t bytes = 0;
   char file_name[FILE_NAME_MAX];
   uint8_t image_buf[IMAGE_NUM_BYTES];
 
@@ -80,22 +81,28 @@ void * client_service(void * param)
       name_len = htons(name_len);
       if (name_len > FILE_NAME_MAX)
       {
-        LOG_ERROR("File name length is too long exiting");
+        LOG_ERROR("File name length %d is too long exiting", name_len);
         break;
       }
       EQ_RET_E(res, read(sockfd, file_name, name_len), -1, NULL);
       LOG_LOW("Receiving file name %s", file_name);
 
-
       EQ_RET_E(res, read(sockfd, &buf_len, sizeof(buf_len)), -1, NULL);
       buf_len = htons(buf_len);
+      LOG_LOW("Trying to read %d bytes", buf_len);
       if (buf_len > IMAGE_NUM_BYTES)
       {
-        LOG_ERROR("File name length is too long exiting");
+        LOG_ERROR("Buffer length %d is too long exiting, buf_len");
         break;
       }
-      EQ_RET_E(res, read(sockfd, image_buf, buf_len), -1, NULL);
+      while (bytes < buf_len)
+      {
+        EQ_RET_E(res, read(sockfd, image_buf + bytes, buf_len - bytes), -1, NULL);
+        bytes += res;
+      }
+      bytes = 0;
       LOG_HIGH("Received %s", file_name);
+      LOG_LOW("Received %d bytes", bytes);
 
       // Open file to store contents
       EQ_RET_E(fd, open(file_name, O_CREAT | O_RDWR, FILE_PERM), -1, NULL);

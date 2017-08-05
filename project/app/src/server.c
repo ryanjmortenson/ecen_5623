@@ -56,6 +56,7 @@ void * server_service(void * param)
                 SUCCESS,
                 NULL,
                 abort_test)
+
   // Clear out old messages in queue
   LOG_HIGH("Clearing out %d messages", attr.mq_curmsgs);
   for (uint32_t i = 0; i < attr.mq_curmsgs; i++)
