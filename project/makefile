@@ -35,21 +35,9 @@ MAPS=$(X86_OUT_DIR)/$(MAP_FILE) \
 # Call sub make files to build dependencies for each target
 -include sources.mk
 
-# Set define of project 2 as default
-ifeq ($(EXERCISE),)
-	EXERCISE=4
-else
-	EXERCISE=$(EXERCISE)
-endif
-
-ifeq ($(PROBLEM),)
-	PROBLEM=5
-else
-	PROBLEM=$(PROBLEM)
-endif
-
 # Project output file names
-EXERCISE_OUT_FILE=exercise$(EXERCISE)problem$(PROBLEM).out
+EXERCISE_CLIENT_OUT_FILE=exercise6client.out
+EXERCISE_SERVER_OUT_FILE=exercise6server.out
 LIB_OUT_FILE=lib$(EXERCISE_FILE)$(EXERCISE).a
 
 # Set CFLAGS used by every build type
@@ -58,12 +46,17 @@ CFLAGS=-I$(APP_INC_DIR) \
        -Werror \
        -std=c99 \
        -D_POSIX_C_SOURCE=199309L \
-       -D_BSD_SOURCE \
+       -D_DEFAULT_SOURCE \
        -D PROBLEM$(PROBLEM)
 
 # Set colored logs if specified
 ifneq ($(COLOR_LOGS),)
 	CFLAGS+=-D COLOR_LOGS
+endif
+
+# Set no compression
+ifeq ($(NO_COMP),)
+	CFLAGS+=-D JPEG_COMPRESSION
 endif
 
 # System log turned on
@@ -93,6 +86,10 @@ ifeq ($(PLATFORM),tegra)
           -I$(ARM_PROP_INC_DIR)
 	OBJS=$(ARM_PROP_OBJS) \
        $(ARM_OBJS)
+	CLIENT_OBJS=$(CLIENT_ARM_PROP_OBJS) \
+						  $(CLIENT_ARM_OBJS)
+	SERVER_OBJS=$(SERVER_ARM_PROP_OBJS) \
+						  $(SERVER_ARM_OBJS)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else ifneq ($(findstring armv7,$(shell uname -a)),)
@@ -102,11 +99,19 @@ else ifneq ($(findstring armv7,$(shell uname -a)),)
           -I$(ARM_PROP_INC_DIR)
 	OBJS=$(ARM_PROP_OBJS) \
        $(ARM_OBJS)
+	CLIENT_OBJS=$(CLIENT_ARM_PROP_OBJS) \
+						  $(CLIENT_ARM_OBJS)
+	SERVER_OBJS=$(SERVER_ARM_PROP_OBJS) \
+						  $(SERVER_ARM_OBJS)
 	TEST_OBJS=$(ARM_TEST_OBJS)
 	OUT_DIR=$(ARM_APP_OUT)
 else
 	CC=gcc
 	OBJS=$(X86_OBJS)
+	CLIENT_OBJS=$(CLIENT_X86_PROP_OBJS) \
+						  $(CLIENT_X86_OBJS)
+	SERVER_OBJS=$(SERVER_X86_PROP_OBJS) \
+						  $(SERVER_X86_OBJS)
 	TEST_OBJS=$(X86_TEST_OBJS)
 	OUT_DIR=$(X86_APP_OUT)
 endif
@@ -132,7 +137,8 @@ BUILD_WITH=@echo "Building with $<"
 
 # Build will build project
 build: $(OBJS)
-	$(MAKE) $(EXERCISE_OUT_FILE)
+	$(MAKE) $(EXERCISE_CLIENT_OUT_FILE)
+	$(MAKE) $(EXERCISE_SERVER_OUT_FILE)
 
 # Build will build project library
 build-lib: $(OBJS)
@@ -142,12 +148,20 @@ build-lib: $(OBJS)
 debug:
 	@echo "Debug output"
 	@echo $(X86_OBJS)
+	@echo $(CLIENT_X86_OBJS)
+	@echo $(SERVER_X86_OBJS)
 
 # Compiles the project into project binary which can be executed with ./project*.out
-$(EXERCISE_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
-$(EXERCISE_OUT_FILE): $(OBJS)
+$(EXERCISE_CLIENT_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
+$(EXERCISE_CLIENT_OUT_FILE): $(OBJS) $(CLIENT_OBJS)
 	$(BUILD_TARGET)
-	$(CC) $(CFLAGS) -o "$@" $(OBJS) -lm -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
+	$(CC) $(CFLAGS) -o "$@" $(OBJS) $(CLIENT_OBJS) -lm -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
+	$(SIZE) $@
+
+$(EXERCISE_SERVER_OUT_FILE): CFLAGS+=$(MAP_FLAG) $(DEFINE) $(VERB) -pthread
+$(EXERCISE_SERVER_OUT_FILE): $(OBJS) $(SERVER_OBJS)
+	$(BUILD_TARGET)
+	$(CC) $(CFLAGS) -o "$@" $(OBJS) $(SERVER_OBJS) -lm -lrt `pkg-config --libs opencv` -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
 	$(SIZE) $@
 
 # Build the library file for static linking
@@ -236,7 +250,6 @@ CLEAN+=$(OUT) \
        exercise*.out \
        *.map \
        *.objdump \
-			 capture_* \
        $(UNIT_TEST_OUT) \
        $(LIB_OUT_FILE) \
        $(CMOCKA_LIB)

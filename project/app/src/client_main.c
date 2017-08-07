@@ -5,9 +5,9 @@
 */
 
 #include <stdint.h>
-#include <capture.h>
+#include <client.h>
 
 int main()
 {
-  return capture();
+  return client_init();
 }
