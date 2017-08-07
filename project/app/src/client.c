@@ -26,6 +26,22 @@
 #define SERVER_PORT (12345)
 #define ADDRESS "10.0.0.29"
 
+static inline
+uint32_t client_recv(int32_t sockfd, void * data, uint32_t count)
+{
+  FUNC_ENTRY;
+
+  int32_t bytes = 0;
+  int32_t res = 0;
+
+  while (bytes < count)
+  {
+    EQ_RET_E(res, read(sockfd, data + bytes, count - bytes), -1, -1);
+    bytes += res;
+  }
+  return bytes;
+} // client_recv()
+
 uint32_t client_socket_dest(int32_t sockfd)
 {
   FUNC_ENTRY;
@@ -50,7 +66,6 @@ void * client_service(void * param)
   int32_t name_len = 0;
   int32_t buf_len = 0;
   int32_t fd = 0;
-  int32_t bytes = 0;
   char file_name[FILE_NAME_MAX];
   uint8_t image_buf[IMAGE_NUM_BYTES];
 
@@ -74,35 +89,32 @@ void * client_service(void * param)
            NULL);
   LOG_HIGH("Connection successful");
 
+  // Loop catching the file name size, file name, image buffer size, image buffer
   while(1)
   {
       // Receive the file name
-      EQ_RET_E(res, read(sockfd, &name_len, sizeof(name_len)), -1, NULL);
+      EQ_RET_E(res, client_recv(sockfd, &name_len, sizeof(name_len)), -1, NULL);
       name_len = htons(name_len);
       if (name_len > FILE_NAME_MAX)
       {
         LOG_ERROR("File name length %d is too long exiting", name_len);
         break;
       }
-      EQ_RET_E(res, read(sockfd, file_name, name_len), -1, NULL);
+      EQ_RET_E(res, client_recv(sockfd, file_name, name_len), -1, NULL);
       LOG_LOW("Receiving file name %s", file_name);
 
-      EQ_RET_E(res, read(sockfd, &buf_len, sizeof(buf_len)), -1, NULL);
+      // Receive the buffer
+      EQ_RET_E(res, client_recv(sockfd, &buf_len, sizeof(buf_len)), -1, NULL);
       buf_len = htons(buf_len);
       LOG_LOW("Trying to read %d bytes", buf_len);
+      EQ_RET_E(res, client_recv(sockfd, image_buf, buf_len), -1, NULL);
       if (buf_len > IMAGE_NUM_BYTES)
       {
         LOG_ERROR("Buffer length %d is too long exiting, buf_len");
         break;
       }
-      while (bytes < buf_len)
-      {
-        EQ_RET_E(res, read(sockfd, image_buf + bytes, buf_len - bytes), -1, NULL);
-        bytes += res;
-      }
-      bytes = 0;
       LOG_HIGH("Received %s", file_name);
-      LOG_LOW("Received %d bytes", bytes);
+      LOG_LOW("Received %d bytes", res);
 
       // Open file to store contents
       EQ_RET_E(fd, open(file_name, O_CREAT | O_RDWR, FILE_PERM), -1, NULL);
@@ -150,6 +162,7 @@ uint32_t client_init()
                 pthread_attr_setschedparam(&sched_attr, &sched),
                 SUCCESS,
                 FAILURE);
+
   // Create pthread
   PT_NOT_EQ_RET(res,
                 pthread_create(&client_thread, &sched_attr, client_service, NULL),
@@ -165,38 +178,8 @@ uint32_t client_init()
            client_policy,
            client_sched.sched_priority);
 
-  usleep(1000000000);
+  usleep(4000000000);
   return SUCCESS;
 } // client_init()
 
-
-uint32_t client_socket_send(int32_t sockfd, void * data, uint32_t count)
-{
-  FUNC_ENTRY;
-
-  int32_t bytes = 0;
-
-  // Write bytes until finished
-  while (bytes < count)
-  {
-    EQ_RET_E(bytes, write(sockfd, data, count), -1, FAILURE);
-  }
-
-  return SUCCESS;
-} // client_socket_send()
-
-uint32_t client_socket_recv(int32_t sockfd, void * data, uint32_t count)
-{
-  FUNC_ENTRY;
-
-  int32_t bytes = 0;
-
-  // Write bytes until finished
-  while (bytes < count)
-  {
-    EQ_RET_E(bytes, read(sockfd, data, count), -1, FAILURE);
-  }
-
-  return SUCCESS;
-} // client_socket_send()
 
