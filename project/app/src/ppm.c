@@ -168,6 +168,11 @@ uint32_t create_image_buf(ppm_cap_t * ppm, colors_t * data)
   return SUCCESS;
 } // create_image_buf()
 
+/*!
+* @brief Handles inccming messages from queue
+* @param no information passed
+* @return NULL
+*/
 void * ppm_service(void * param)
 {
   FUNC_ENTRY;

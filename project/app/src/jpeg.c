@@ -60,6 +60,11 @@ typedef struct {
 // Add data macro
 #define ADD_DATA(dest, src, count, tally) memcpy(&dest[tally], src, count); tally += count
 
+/*!
+* @brief Builds the JPEG file buffer and writes to file
+* @param cap current capture information
+* @return SUCCESS/FAILURE
+*/
 static inline
 uint32_t write_jpeg(jpeg_cap_t * cap)
 {
@@ -97,6 +102,11 @@ uint32_t write_jpeg(jpeg_cap_t * cap)
   return cur_loc;
 }
 
+/*!
+* @brief Handles incoming messages from queue
+* @param param no information is passed
+* @return NULL
+*/
 void * jpeg_service(void * param)
 {
   FUNC_ENTRY;
@@ -188,7 +198,6 @@ void * jpeg_service(void * param)
     res = count - MAX_FRAMES;
     if (res > -1)
     {
-      LOG_FATAL("%d", res);
       snprintf(unlink_name, FILE_NAME_MAX, FILE_NAME_FMT, DIR_NAME, res);
       LOG_LOW("Unlinking %s", unlink_name);
       EQ_RET_EA(res, unlink(unlink_name), -1, NULL, abort_test);

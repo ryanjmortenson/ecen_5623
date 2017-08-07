@@ -17,5 +17,9 @@
 #define BYTES_PER_PIXEL (3)
 #define IMAGE_NUM_BYTES (HRES * VRES * BYTES_PER_PIXEL)
 
+/*!
+* @brief Start the jpeg_service thread
+* @return SUCCESS/FAILURE
+*/
 uint32_t jpeg_init();
 #endif /* _JPEG_H */

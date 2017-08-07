@@ -33,14 +33,12 @@
 #include "ppm.h"
 #endif
 
+// Warm up camera by capturing frames
 #define WARM_UP
+#define WARM_UP_FRAMES (10)
 
 // Capture ping pong buffer size
 #define CAP_BUF_SIZE (4)
-
-// Socket info
-#define PORT (12345)
-#define ADDRESS "127.0.0.1"
 
 // Open CV info
 #define WINDOWNAME "capture"
@@ -49,17 +47,11 @@
 // Timing info
 #define MICROSECONDS_PER_SECOND (1000000)
 #define MICROSECONDS_PER_MILLISECOND (1000)
+
+// Frame capture info
 #define NUM_FRAMES (20)
 #define PERIOD (100)
-#define WARM_UP_FRAMES (10)
-
-// File info
-#define DIR_NAME_MAX (255)
-#define UNAME_MAX (256)
 #define TIMING_BUFFER (125)
-
-#define DISPLAY_FRAME(cap, frame) cvShowImage(WINDOWNAME, frame); \
-                                  cvWaitKey(1)
 
 // Flag for stopping application.  All services extern this variable.
 uint32_t abort_test = 0;
@@ -67,19 +59,17 @@ uint32_t abort_test = 0;
 // Ping Pong buffer for cap info
 static cap_info_t cap_info[CAP_BUF_SIZE];
 
-// Capture structure to pass into pthread
-typedef struct cap {
+// Capture structure
+static struct cap {
   CvCapture * capture;
   sem_t start;
   sem_t stop;
   mqd_t image_queue;
-} cap_t;
-
-// CApture information
-static cap_t cap;
+} cap;
 
 /*!
-* @brief Spins off a thread to do capture
+* @brief Captures frames and passes them through a message queue for the
+*        jpeg/ppm service to convert and save to disk
 * @param param void pointer to params
 * @return NULL
 */
@@ -120,10 +110,8 @@ void * cap_service(void * param)
                  NULL,
                  abort_test);
 
-#if 0
     cvShowImage(WINDOWNAME, cur_cap_info->frame);
     cvWaitKey(1);
-#endif
 
     // Post done
     sem_post(&cap.stop);
@@ -140,13 +128,15 @@ int sched_service()
   struct timespec diff;
   pthread_t cap_thread;
   pthread_attr_t sched_attr;
-#ifdef WARM_UP
-  IplImage * frame;
-#endif
   int32_t cap_policy = 0;
   int32_t res = 0;
   int32_t rt_max_pri = 0;
   uint8_t timer = profiler_init();
+
+#ifdef WARM_UP
+  // Frame used for capture during warm up phase
+  IplImage * frame;
+#endif // WARM_UP
 
   // Initialize log (does nothing if not using syslog)
   log_init();
@@ -194,7 +184,7 @@ int sched_service()
                 SUCCESS);
 
   // Set the priority to max - 1 for the test thread
-  sched.sched_priority = rt_max_pri - 2;
+  sched.sched_priority = rt_max_pri - 1;
   PT_NOT_EQ_EXIT(res,
                  pthread_attr_setschedparam(&sched_attr, &sched),
                  SUCCESS);
@@ -274,7 +264,6 @@ int sched_service()
 
     // Display the time
     DISPLAY_TIMESTAMP;
-
   }
 
   // Set the abort flag then allow the thread to exit
