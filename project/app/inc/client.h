@@ -15,20 +15,4 @@
 */
 uint32_t client_init();
 
-/*!
-* @brief Shutdown the client socket
-* @param sockfd socket to shutdown
-* @return SUCCESS/FAILURE
-*/
-uint32_t client_socket_dest(int32_t sockfd);
-
-/*!
-* @brief Send data from client socket
-* @param sockfd socket to send data over
-* @param data data to send over socket
-* @param count amount of data to send over socked
-* @return SUCCESS/FAILURE
-*/
-uint32_t client_socket_send(int32_t sockfd, void * data, uint32_t count);
-
 #endif /* _CLIENT_H */

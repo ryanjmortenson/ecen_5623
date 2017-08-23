@@ -20,15 +20,16 @@
 #include "server.h"
 
 #define SERVER_PORT (12345)
-#define BUFFER_SIZE (256)
 #define SOCKET_BACKLOG_LEN (5)
 
 // Global abort flag
 extern uint32_t abort_test;
 
-// Services can check if a client is connected
-uint32_t client_connect = 0;
-
+/*!
+* @brief Sends JPEG file over socket to client
+* @param param no data
+* @return NULL
+*/
 void * server_service(void * param)
 {
   FUNC_ENTRY;
@@ -43,6 +44,8 @@ void * server_service(void * param)
   int32_t newsockfd = 0;
   int32_t res = 0;
   uint32_t clilen;
+  uint32_t name_len;
+  uint32_t buf_len;
 
   // Try to create the queue
   EQ_RET_E(server_queue,
@@ -95,35 +98,40 @@ void * server_service(void * param)
              -1,
              NULL);
 
+    // Log connection stats
     LOG_MED("Accepted Connection from %d on port %d",
             cli_addr.sin_addr.s_addr,
             cli_addr.sin_port);
 
-    client_connect = 1;
-
     // Loop until read returns 0 bytes
     while(1)
     {
+
+      // Wait for a message with file to send
       EQ_RET_E(res,
                mq_receive(server_queue, (char *)&server_msg, attr.mq_msgsize, NULL),
                -1,
                NULL);
-      uint32_t network = htons(server_msg.file_name_len);
-      uint32_t buf_size = htons(server_msg.image_buf_len);
+
+      // Transform to network format
+      name_len = htons(server_msg.file_name_len);
+      buf_len = htons(server_msg.image_buf_len);
+
+      // Send name length, file name, buffer length, and buffer over socket
       LOG_FATAL("Sending file %s over socket", server_msg.file_name);
-      EQ_RET_E(res, write(newsockfd, &network, sizeof(network)), -1, NULL);
+      EQ_RET_E(res, write(newsockfd, &name_len, sizeof(name_len)), -1, NULL);
       EQ_RET_E(res,
                write(newsockfd, server_msg.file_name, server_msg.file_name_len),
                -1,
                NULL);
-      EQ_RET_E(res, write(newsockfd, &buf_size, sizeof(buf_size)), -1, NULL);
+      EQ_RET_E(res, write(newsockfd, &buf_len, sizeof(buf_len)), -1, NULL);
       EQ_RET_E(res,
                write(newsockfd, server_msg.image_buf, server_msg.image_buf_len),
                -1,
                NULL);
     }
-    client_connect = 0;
   }
+
   LOG_HIGH("server_service thread exiting");
   mq_close(server_queue);
   close(sockfd);
@@ -133,7 +141,6 @@ void * server_service(void * param)
   }
   return NULL;
 } // server_service()
-
 
 uint32_t server_init()
 {
@@ -163,7 +170,7 @@ uint32_t server_init()
   EQ_RET_E(rt_max_pri, sched_get_priority_max(SCHED_FIFO), -1, FAILURE);
 
   // Set the priority to max - 1 for the test thread
-  sched.sched_priority = rt_max_pri - 4;
+  sched.sched_priority = rt_max_pri - 1;
   PT_NOT_EQ_RET(res,
                 pthread_attr_setschedparam(&sched_attr, &sched),
                 SUCCESS,

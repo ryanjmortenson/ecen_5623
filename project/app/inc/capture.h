@@ -36,8 +36,9 @@ typedef struct {
 #define QUEUE_NAME "/frame_queue"
 
 /*!
-* @brief Execute exercise 4 problem 5
-* @return 0
+* @brief Starts capture, jpeg/ppm, and server service.  Then becomes the
+* scheduler service
+* @return SUCCESS/FAILURE
 */
 int sched_service();
 

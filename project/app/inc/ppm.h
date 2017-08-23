@@ -23,5 +23,9 @@ typedef struct colors {
   uint8_t red;
 } __attribute__((packed)) colors_t;
 
+/*!
+* @brief Start the ppm thread
+* @return SUCCESS/FAILURE
+*/
 uint32_t ppm_init();
 #endif /* _PPM_H */

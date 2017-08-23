@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,16 @@
 #define SERVER_PORT (12345)
 #define ADDRESS "10.0.0.29"
 
+// Inform the main that service is done
+static sem_t done;
+
+/*!
+* @brief Ensure to receive all bytes on a read
+* @param sockfd socket file descriptor
+* @param data location to store data
+* @param count number of bytes to read
+* @return number of bytes read
+*/
 static inline
 uint32_t client_recv(int32_t sockfd, void * data, uint32_t count)
 {
@@ -42,7 +53,12 @@ uint32_t client_recv(int32_t sockfd, void * data, uint32_t count)
   return bytes;
 } // client_recv()
 
-uint32_t client_socket_dest(int32_t sockfd)
+/*!
+* @brief Shutdown socked
+* @param sockfd socket file descriptor
+* @return SUCCESS/FAILURE
+*/
+uint32_t client_dest(int32_t sockfd)
 {
   FUNC_ENTRY;
 
@@ -53,8 +69,13 @@ uint32_t client_socket_dest(int32_t sockfd)
   EQ_RET_E(res, shutdown(sockfd, SHUT_RDWR), -1, FAILURE);
 
   return SUCCESS;
-} // client_socket_dest()
+} // client_dest()
 
+/*!
+* @brief Handles incoming messages on queue
+* @param param no data
+* @return NULL
+*/
 void * client_service(void * param)
 {
   FUNC_ENTRY;
@@ -122,7 +143,7 @@ void * client_service(void * param)
       EQ_RET_E(res, close(fd), -1, NULL);
   }
   LOG_HIGH("client_service exiting");
-  client_socket_dest(sockfd);
+  client_dest(sockfd);
   return NULL;
 } // client_service()
 
@@ -136,6 +157,9 @@ uint32_t client_init()
   int32_t res = 0;
   int32_t rt_max_pri = 0;
   int32_t client_policy = 0;
+
+  // Semaphore for signaling done
+  PT_NOT_EQ_EXIT(res, sem_init(&done, 0, 0), SUCCESS);
 
   // Try to create directory for storing images
   EQ_RET_E(res, create_dir(DIR_NAME), FAILURE, FAILURE);
@@ -178,8 +202,7 @@ uint32_t client_init()
            client_policy,
            client_sched.sched_priority);
 
-  usleep(4000000000);
+  // Wait for thread to join
+  pthread_join(client_thread, NULL);
   return SUCCESS;
 } // client_init()
-
-
